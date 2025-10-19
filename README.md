@@ -332,3 +332,23 @@ STRATEGY_MODULE=sma_cross
 - Document usage of `docker compose -f docker-compose.yml -f docker-compose.test.yml` for developers to reproduce integration environment without GitHub Actions.
 
 This plan positions us to iterate efficiently: we now have an agreed structure, architectural blueprint, sample orchestration configuration, and a staged pathway to a fully operational quant signaling platform. Subsequent work will translate each roadmap item into code, tests, and documentation updates.
+
+## 12. Implementation Progress
+- **Container orchestration** `docker-compose.yml` now wires Bitnami Kafka/Zookeeper, TimescaleDB (with hypertable schema & continuous aggregates), Grafana provisioning, custom PyFlink image, and the Coinbase producer container.
+- **Environment & configuration** Added `.env.example`, centralized PyFlink job settings (`flink-jobs/config.py`), and exposed SMA parameters/strategy IDs via environment variables.
+- **Flink job scaffold** `flink-jobs/__main__.py` builds a streaming TableEnvironment, registers Kafka sources/sinks, and executes the SMA crossover pipeline with statement sets.
+- **Strategy implementation** `flink-jobs/strategies/sma_cross.py` computes fast/slow SMAs, detects crossover events (with configurable confirmation window), and emits signals to Kafka with metadata for Grafana.
+- **Schema & replay utilities** Introduced dataclass schemas for prices/signals, replay service (`flink-jobs/replay/service.py`) with CLI (`scripts/replay_prices.py`) to feed backtests from Kafka, and bootstrap tooling to precreate topics/verify TimescaleDB (`scripts/bootstrap_data.py`).
+- **Async ingestion** Coinbase producer stack (`producer/coinbase_client.py`, `producer/kafka_producer.py`, `producer/run.py`) now streams normalized tickers into Kafka using resilient websockets and JSON-serialized `aiokafka` producer.
+- **TimescaleDB schema** Migration scripts (`docker/postgres/init/*.sql`) create hypertables for market data, signals, metrics, latency, plus continuous aggregates & seed strategy records.
+- **Grafana provisioning** Datasource and placeholder dashboard JSON now align with TimescaleDB storage layout.
+
+## 13. Remaining Work
+- **Normalization & feature pipelines** Implement `prices.normalized` generation (PyFlink/producer) with schema validation and Kafka topic wiring; integrate feature tables feeding SMA pipeline.
+- **Metrics computation** Add dedicated PyFlink operators/UDFs for Sharpe, Sortino, returns, drawdowns; publish to `metrics_performance` and persist into TimescaleDB (async JDBC or `asyncpg` sidecar).
+- **Strategy management** Build strategy registry metadata in DB (`strategies`, `strategy_runs`), add CLI/API for creating runs, and support dynamic parameter updates / A/B deployments.
+- **Replay automation** Extend replay tooling with offset range selection, scenario configuration, and integration tests ensuring SMA tuning loop executes against recorded data.
+- **Producer hardening** Complete Coinbase auth (when needed), heartbeat/resubscribe logic, and add batching/compression tuning plus optional dual-write to `prices.replay`.
+- **Observability** Flesh out Grafana dashboards, integrate Prometheus exporters for Kafka/Flink, and add alerting rules covering strategy health and ingestion latency.
+- **Testing & CI** Implement unit/integration test suites per Section 11, wire GitHub Actions workflows, and add mocks/fixtures for Coinbase, Kafka, and Flink mini-cluster runs.
+- **Security & operations** Add secret management for credentials, rotate API keys, and document deployment steps for staging/production environments (including topic retention policies and scaling playbooks).
