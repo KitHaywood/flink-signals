@@ -10,6 +10,7 @@ def test_job_config_from_env(monkeypatch):
     monkeypatch.setenv("SMA_FAST_WINDOW", "10")
     monkeypatch.setenv("SMA_SLOW_WINDOW", "30")
     monkeypatch.setenv("STRATEGY_RUN_ID", "test-run")
+    monkeypatch.setenv("EXECUTION_MODE", "paper")
     monkeypatch.setenv("TRANSACTION_COST_BPS", "12")
     monkeypatch.setenv("SLIPPAGE_BPS", "3")
     monkeypatch.setenv("SLIPPAGE_MAX_BPS", "25")
@@ -27,6 +28,7 @@ def test_job_config_from_env(monkeypatch):
     assert cfg.sma_fast_window == 10
     assert cfg.sma_slow_window == 30
     assert cfg.strategy_run_id == "test-run"
+    assert cfg.execution_mode == "paper"
     assert cfg.transaction_cost_bps == 12
     assert cfg.transaction_cost_rate == 0.0012
     assert cfg.slippage_bps == 3

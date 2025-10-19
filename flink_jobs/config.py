@@ -17,6 +17,7 @@ class JobConfig:
     sma_slow_window: int
     sma_confirmation_window: int
     strategy_run_id: str
+    execution_mode: str
     postgres_host: str
     postgres_port: str
     postgres_db: str
@@ -48,7 +49,8 @@ class JobConfig:
             sma_fast_window=int(os.getenv("SMA_FAST_WINDOW", "20")),
             sma_slow_window=int(os.getenv("SMA_SLOW_WINDOW", "60")),
             sma_confirmation_window=int(os.getenv("SMA_CONFIRMATION_WINDOW", "3")),
-            strategy_run_id=os.getenv("STRATEGY_RUN_ID", "sma-cross-live"),
+            strategy_run_id=os.getenv("STRATEGY_RUN_ID", "sma-cross-paper"),
+            execution_mode=os.getenv("EXECUTION_MODE", "paper"),
             postgres_host=os.getenv("POSTGRES_HOST", "postgres"),
             postgres_port=os.getenv("POSTGRES_PORT", "5432"),
             postgres_db=os.getenv("POSTGRES_DB", "signals"),

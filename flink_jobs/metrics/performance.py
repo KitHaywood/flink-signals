@@ -31,6 +31,8 @@ def register_performance_metrics(
         Friendly label for the metrics window (e.g., "5m").
     """
 
+    execution_mode_literal = config.execution_mode.replace("'", "''")
+
     table_env.execute_sql(
         f"""
         CREATE TEMPORARY VIEW position_returns AS
@@ -145,7 +147,8 @@ def register_performance_metrics(
                 KEY 'average_unit_exposure' VALUE CAST(pw.avg_unit_exposure AS STRING),
                 KEY 'total_trade_cost' VALUE CAST(pw.total_trade_cost AS STRING),
                 KEY 'total_transaction_cost' VALUE CAST(pw.total_transaction_cost AS STRING),
-                KEY 'total_slippage_cost' VALUE CAST(pw.total_slippage_cost AS STRING)
+                KEY 'total_slippage_cost' VALUE CAST(pw.total_slippage_cost AS STRING),
+                KEY 'execution_mode' VALUE '{execution_mode_literal}'
             ) AS metadata
         FROM performance_windows pw
         LEFT JOIN signal_counts sc

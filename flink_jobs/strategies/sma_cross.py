@@ -52,6 +52,7 @@ def build_pipeline(
         source_table = "combined_prices"
 
     confirmation = max(1, config.sma_confirmation_window)
+    execution_mode_literal = config.execution_mode.replace("'", "''")
 
     table_env.execute_sql(
         f"""
@@ -166,7 +167,8 @@ def build_pipeline(
                 KEY 'fast_sma' VALUE CAST(fast_sma AS STRING),
                 KEY 'slow_sma' VALUE CAST(slow_sma AS STRING),
                 KEY 'spread' VALUE CAST(spread AS STRING),
-                KEY 'confirmation_window' VALUE CAST({confirmation} AS STRING)
+                KEY 'confirmation_window' VALUE CAST({confirmation} AS STRING),
+                KEY 'execution_mode' VALUE '{execution_mode_literal}'
             ) AS metadata
         FROM (
             SELECT
@@ -334,7 +336,8 @@ def build_pipeline(
             ABS(position_change) * mid_price * slippage_rate AS slippage_cost,
             JSON_OBJECT(
                 KEY 'fill_latency_ms' VALUE CAST(fill_latency_ms AS STRING),
-                KEY 'slippage_rate' VALUE CAST(slippage_rate AS STRING)
+                KEY 'slippage_rate' VALUE CAST(slippage_rate AS STRING),
+                KEY 'execution_mode' VALUE '{execution_mode_literal}'
             ) AS metadata
         FROM (
             SELECT
@@ -367,7 +370,8 @@ def build_pipeline(
                 KEY 'prev_position' VALUE CAST(COALESCE(prev_position, 0.0) AS STRING),
                 KEY 'transaction_cost_bps' VALUE CAST({config.transaction_cost_bps} AS STRING),
                 KEY 'slippage_bps' VALUE CAST({config.slippage_bps} AS STRING),
-                KEY 'effective_slippage_rate' VALUE CAST(slippage_rate AS STRING)
+                KEY 'effective_slippage_rate' VALUE CAST(slippage_rate AS STRING),
+                KEY 'execution_mode' VALUE '{execution_mode_literal}'
             ) AS metadata
         FROM positions_costs
         WHERE prev_position IS NULL OR position <> prev_position

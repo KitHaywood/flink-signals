@@ -1,6 +1,6 @@
 # Strategy Run Operations Runbook
 
-This runbook outlines the standard operating procedures for launching, tuning, and retiring strategy runs in the quant signals platform.
+This runbook outlines the standard operating procedures for launching, tuning, and retiring strategy runs in the quant signals platform. The current deployment footprint is paper trading only—no authenticated Coinbase trading APIs are invoked.
 
 ## Prerequisites
 - Docker Compose stack running (`docker-compose up -d`).
@@ -20,13 +20,13 @@ This runbook outlines the standard operating procedures for launching, tuning, a
    ```
 2. Register the run:
    ```bash
-   python scripts/strategy_runs.py create sma_cross --param-file configs/sma_cross_live.json --run-type LIVE --created-by "alice"
+   python scripts/strategy_runs.py create sma_cross --param-file configs/sma_cross_live.json --run-type PAPER --created-by "alice"
    ```
    The command prints the generated `strategy_run_id`. Export it before submitting the PyFlink job:
    ```bash
    export STRATEGY_RUN_ID=<printed-id>
    ```
-3. Update `.env` or deployment manifests with `STRATEGY_RUN_ID`, `TRANSACTION_COST_BPS`, and `SLIPPAGE_BPS`.
+3. Update `.env` or deployment manifests with `STRATEGY_RUN_ID`, `EXECUTION_MODE=paper`, `TRANSACTION_COST_BPS`, and `SLIPPAGE_BPS`.
 4. Submit the Flink job (within the `flink_jobs` container or host):
    ```bash
    ./scripts/submit_flink_job.sh flink_jobs/__main__.py

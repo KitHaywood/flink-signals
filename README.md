@@ -5,17 +5,18 @@ This document lays out a complete plan for a PyFlink-based quantitative signal p
 ## 1. System Overview
 - **Objective** build a modular quant research and production stack for digital assets that performs streaming analytics and publishes performance telemetry in real time.
 - **Core services** Coinbase price producer → Kafka (broker) → Flink (PyFlink jobs) → PostgreSQL (state & reference data) → Grafana (dashboards via PostgreSQL / Prometheus adapters).
-- **Strategy layer** encapsulated inside PyFlink jobs (`flink_jobs/strategies`) operating on normalized Kafka streams; outputs trades, signals, and rolling performance metrics back to Kafka and PostgreSQL via asynchronous sinks to keep processing non-blocking. The baseline module is a simple moving-average crossover (`sma_cross`) that we will fine tune through automated rolling backtests.
+- **Strategy layer** encapsulated inside PyFlink jobs (`flink_jobs/strategies`) operating on normalized Kafka streams; outputs signals, simulated fills, and rolling performance metrics back to Kafka and PostgreSQL via asynchronous sinks to keep processing non-blocking. The baseline module is a simple moving-average crossover (`sma_cross`) that we will fine tune through automated rolling backtests.
+- **Execution mode** the platform currently operates in paper-trading mode only, deriving execution telemetry from public Coinbase data without placing live exchange orders.
 - **Observability** Grafana dashboards consume metrics from PostgreSQL views and optional Prometheus exporters attached to Flink / Kafka for cluster health.
 
 ## 2. Target Architecture
-- Price feed microservice authenticates to Coinbase WebSocket API, enriches ticks, and publishes to Kafka topic `prices.raw` (and optionally mirrors to long-retention `prices.replay`).
+- Price feed microservice connects to the public Coinbase WebSocket API (no authentication required), enriches ticks, and publishes to Kafka topic `prices.raw` (and optionally mirrors to long-retention `prices.replay`).
 - Kafka Connect (optional) or custom PyFlink source normalizes ticks and pushes to topic `prices.normalized`.
 - Flink job graph:
   - **Ingestion operator** consumes `prices.normalized`, applies schema validation.
   - **Feature stage** computes returns, volatility measures, rolling windows; pushes to `signals.features`.
-  - **Strategy stage** (pluggable Python module; default `sma_cross`) emits strategy signals & positions to `signals.decisions`.
-  - **Performance stage** computes Sharpe/Sortino/returns using keyed state & tumbling windows; writes metrics into PostgreSQL table `strategy_metrics` via asynchronous sink operators and Kafka topic `metrics.performance`.
+  - **Strategy stage** (pluggable Python module; default `sma_cross`) emits strategy signals & positions to `signals.decisions` alongside simulated execution events.
+  - **Performance stage** computes Sharpe/Sortino/returns using keyed state & tumbling windows; writes metrics into PostgreSQL table `strategy_metrics` via asynchronous sink operators and Kafka topic `metrics.performance`, tagging each record with the active paper-trading run metadata.
   - **Rolling backtest stage** (on-demand) replays historical messages through the same strategy pipeline to fine tune SMA window parameters and generate performance diagnostics.
 - Downstream Grafana dashboards read `strategy_metrics` using a PostgreSQL data source; additional panels driven by Kafka (via Kafka REST proxy) or Prometheus exporters.
 
@@ -120,6 +121,8 @@ services:
       - FLINK_PROPERTIES=
           jobmanager.rpc.address: flink-jobmanager
           parallelism.default: 2
+      - EXECUTION_MODE=paper
+      - STRATEGY_RUN_ID=sma-cross-paper
     ports:
       - "8081:8081"
     volumes:
@@ -145,9 +148,8 @@ services:
     build: ./producer
     command: python -m producer.run
     environment:
-      - COINBASE_API_KEY=${COINBASE_API_KEY}
-      - COINBASE_API_SECRET=${COINBASE_API_SECRET}
-      - COINBASE_PRODUCT_IDS=${COINBASE_PRODUCT_IDS}
+      - COINBASE_PRODUCT_IDS=${COINBASE_PRODUCT_IDS:-BTC-USD,ETH-USD}
+      - COINBASE_WS_URL=wss://ws-feed.exchange.coinbase.com
       - KAFKA_BROKER=kafka:9092
     depends_on:
       - kafka
@@ -174,15 +176,36 @@ volumes:
 POSTGRES_USER=flink
 POSTGRES_PASSWORD=flink_password
 POSTGRES_DB=signals
+POSTGRES_HOST=postgres
+POSTGRES_PORT=5432
 
-COINBASE_API_KEY=your_key
-COINBASE_API_SECRET=your_secret
 COINBASE_PRODUCT_IDS=BTC-USD,ETH-USD
+COINBASE_WS_URL=wss://ws-feed.exchange.coinbase.com
 
+GRAFANA_USER=admin
 GRAFANA_PASSWORD=admin
 
 FLINK_PARALLELISM=2
 STRATEGY_MODULE=sma_cross
+KAFKA_BROKER=kafka:9092
+KAFKA_TOPIC_PRICES_RAW=prices.raw
+KAFKA_TOPIC_PRICES_NORMALIZED=prices.normalized
+KAFKA_TOPIC_SIGNALS_DECISIONS=signals.decisions
+KAFKA_TOPIC_METRICS_PERFORMANCE=metrics.performance
+
+SMA_FAST_WINDOW=20
+SMA_SLOW_WINDOW=60
+SMA_CONFIRMATION_WINDOW=3
+STRATEGY_RUN_ID=sma-cross-paper
+EXECUTION_MODE=paper
+TRANSACTION_COST_BPS=0
+SLIPPAGE_BPS=5
+SLIPPAGE_MAX_BPS=50
+SLIPPAGE_VOLATILITY_MULTIPLIER=0.35
+SLIPPAGE_SPREAD_MULTIPLIER=0.5
+FILL_LATENCY_MS=250
+FILL_LATENCY_JITTER_MS=500
+FILL_LATENCY_VOLATILITY_MS=1200
 ```
 
 ## 8. Operational Considerations
@@ -192,7 +215,7 @@ STRATEGY_MODULE=sma_cross
 - **Metrics efficiency** compute Sharpe/Sortino using streaming windows (e.g., 5m, 1h) with keyed state to avoid recomputation; consider using Flink SQL `TABLE`/`VIEW` for direct PostgreSQL sink with upsert semantics.
 - **Schema governance** maintain Avro/JSON schemas in `flink_jobs/schemas` and enforce through schema registry (Confluent/Apicurio) if scaling.
 - **Async database access** standardize on `asyncpg` for auxiliary services/sidecars that interact with PostgreSQL to avoid blocking event loops and to maximize throughput in streaming contexts.
-- **Security** manage secrets via `.env` (development) and Docker secrets (production). Segregate Grafana credentials and API keys.
+- **Security** manage secrets via `.env` (development) and Docker secrets (production). Segregate Grafana credentials and keep placeholders ready for any future exchange API keys if moving beyond paper trading.
 
 ## 9. End-to-End Implementation Roadmap (0 → 100)
 1. **Bootstrap repository**
@@ -349,15 +372,47 @@ This plan positions us to iterate efficiently: we now have an agreed structure, 
 - **TimescaleDB & Grafana** Database migrations declare hypertables (including `strategy_positions_stream`), compression policies, and continuous aggregates; Grafana provisioning seeds a datasource and placeholder dashboard.
 - **Strategy run control plane** Added `scripts/strategy_runs.py` for CLI-driven creation/listing of `strategy_runs`, enabling orchestration metadata to live in TimescaleDB.
 - **Position snapshots & transaction costs** SMA pipeline now forward-fills positions, persists trade transitions into `strategy_positions_stream`, and subtracts configurable transaction-cost bps from realized P&L.
+- **Paper trading environment** Execution-mode metadata is fixed to `paper`, simulated fills capture latency/slippage assumptions, and TimescaleDB stores ledger-style position/execution history for evaluation with no live order routing.
 - **Replay tooling** `scripts/replay_prices.py` + `ReplayService` support dry runs, timestamp-bounded replays, and speed controls for targeted backtests.
 - **Testing scaffolding** Introduced lightweight pytest coverage for producer payload validation, config parsing, replay timestamp parsing, and strategy-run CLI parsing under `tests/`.
 - **Runbooks** Added `docs/runbooks/strategy-run-operations.md` describing launch, replay tuning, and rollback procedures.
 - **Integration hooks** Added `tests/integration/` harness with `pytest.mark.integration`; run by exporting `RUN_INTEGRATION_TESTS=1` before invoking `pytest -m integration`.
 
 - **Strategy P&L analytics** Model execution slippage/latency more realistically (current fill latency is constant) and visualize exposures & cumulative trade costs.
-- **Producer hardening** Finalize Coinbase producer (auth, reconnection, batching, schema validation) and add ingest telemetry.
+- **Producer hardening** Finalize Coinbase producer (connection resilience, reconnection, batching, schema validation) and add ingest telemetry.
 - **Replay automation** Build end-to-end replay tests using Kafka/Flink services, seed fixture data, and assert Timescale metrics.
 - **Strategy management** Automate run parameter templating/rollouts (beyond CLI) and add health/alert hooks.
 - **Observability** Integrate Prometheus exporters and finish Grafana dashboards (cluster health, ingestion latency, P&L panels).
 - **Testing & CI** Expand unit coverage (metric math, async sinks) and enable integration workflows in GitHub Actions.
 - **Security & operations** Introduce secrets management, credential rotation docs, and runbooks for scaling/recovery.
+- **Live trading readiness** Document requirements for moving beyond paper trading (order routing, Coinbase Advanced Trade APIs, risk controls) while keeping current stack insulated from real balances.
+
+## 13. Paper Trading Environment
+1. Copy the environment template and tune paper-trading knobs:
+   ```bash
+   cp env/.env.example .env
+   echo "COINBASE_PRODUCT_IDS=BTC-USD,ETH-USD" >> .env
+   echo "EXECUTION_MODE=paper" >> .env
+   ```
+2. Launch the local stack with the public Coinbase feed:
+   ```bash
+   docker compose up -d
+   docker compose logs -f producer
+   ```
+   The producer uses `wss://ws-feed.exchange.coinbase.com` and requires no API credentials.
+3. Bootstrap core resources and fixtures from the project virtualenv:
+   ```bash
+   . .venv/bin/activate
+   python scripts/bootstrap_data.py --apply
+   ```
+4. Submit the PyFlink job in paper mode once Kafka/Postgres are healthy:
+   ```bash
+   python scripts/strategy_runs.py create sma_cross --run-type PAPER --created-by "local"
+   export STRATEGY_RUN_ID=<printed_id_from_previous_step>
+   ./scripts/submit_flink_job.sh sma_cross
+   ```
+5. Inspect simulated fills and P&L metrics via:
+   ```bash
+   psql "$POSTGRES_URI" -c "SELECT * FROM strategy_executions_stream ORDER BY execution_time DESC LIMIT 20;"
+   ```
+   Grafana (`http://localhost:3000`) exposes the **Quant Signals Overview** dashboard backed purely by paper-trading data.

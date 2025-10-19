@@ -23,6 +23,7 @@ async def main() -> None:
     coinbase = CoinbaseClient(
         product_ids=config.coinbase_product_ids,
         reconnect_delay_seconds=config.reconnect_delay_seconds,
+        ws_url=config.coinbase_ws_url,
     )
     kafka_producer = KafkaPriceProducer(config.kafka_bootstrap_servers)
 
