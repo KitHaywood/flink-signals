@@ -22,6 +22,8 @@ class ReplayConfig:
     consumer_group: str = "replay-runner"
     speedup_factor: float = 1.0
     start_offset: Optional[int] = None
+    start_timestamp_ms: Optional[int] = None
+    end_timestamp_ms: Optional[int] = None
 
 
 class ReplayService:
@@ -47,14 +49,31 @@ class ReplayService:
         )
         await self._consumer.start()
         await self._producer.start()
-        if self.config.start_offset is not None:
-            partitions = await self._consumer.partitions_for_topic(self.config.source_topic)
-            if not partitions:
-                raise RuntimeError(f"No partitions found for topic {self.config.source_topic}")
-            topic_partitions = [TopicPartition(self.config.source_topic, p) for p in partitions]
-            await self._consumer.assign(topic_partitions)
+
+        partitions = await self._consumer.partitions_for_topic(self.config.source_topic)
+        if not partitions:
+            raise RuntimeError(f"No partitions found for topic {self.config.source_topic}")
+        topic_partitions = [TopicPartition(self.config.source_topic, p) for p in partitions]
+
+        await self._consumer.assign(topic_partitions)
+
+        if self.config.start_timestamp_ms is not None:
+            offsets = await self._consumer.offsets_for_times(
+                {tp: self.config.start_timestamp_ms for tp in topic_partitions}
+            )
+            for tp in topic_partitions:
+                meta = offsets.get(tp)
+                if meta is not None and meta.offset is not None:
+                    await self._consumer.seek(tp, meta.offset)
+                elif self.config.start_offset is not None:
+                    await self._consumer.seek(tp, self.config.start_offset)
+                else:
+                    await self._consumer.seek_to_beginning(tp)
+        elif self.config.start_offset is not None:
             for tp in topic_partitions:
                 await self._consumer.seek(tp, self.config.start_offset)
+        else:
+            await self._consumer.seek_to_beginning(*topic_partitions)
 
     async def stop(self) -> None:
         tasks = []
@@ -78,6 +97,10 @@ class ReplayService:
 
         try:
             async for record in self._consumer:
+                if self.config.end_timestamp_ms is not None and record.timestamp > self.config.end_timestamp_ms:
+                    logger.info("Reached end timestamp; stopping replay.")
+                    break
+
                 if first_event_ts is None:
                     first_event_ts = record.timestamp
                     start_wall = time.monotonic()

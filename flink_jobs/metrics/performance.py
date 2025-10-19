@@ -31,22 +31,54 @@ def register_performance_metrics(
         Friendly label for the metrics window (e.g., "5m").
     """
 
+    cost_rate = config.transaction_cost_rate
+
+    table_env.execute_sql(
+        f"""
+        CREATE TEMPORARY VIEW position_returns AS
+        SELECT
+            product_id,
+            event_time,
+            sequence,
+            mid_price,
+            COALESCE(returns, 0.0) AS asset_return,
+            position,
+            prev_position,
+            ABS(position - COALESCE(prev_position, 0.0)) AS position_change,
+            ABS(position - COALESCE(prev_position, 0.0)) * mid_price * {cost_rate} AS trade_cost,
+            COALESCE(prev_position, 0.0) * COALESCE(returns, 0.0)
+                - ABS(position - COALESCE(prev_position, 0.0)) * mid_price * {cost_rate} AS realized_pnl
+        FROM positions_enriched
+        """
+    )
+
     table_env.execute_sql(
         f"""
         CREATE TEMPORARY VIEW performance_windows AS
         SELECT
             window_start,
             window_end,
-            AVG(returns) AS avg_return,
-            STDDEV_POP(returns) AS volatility,
-            SUM(returns) AS cumulative_return,
-            SUM(CASE WHEN returns < 0 THEN returns * returns ELSE 0 END) AS downside_sum,
-            COUNT(returns) AS sample_size,
-            COUNT(CASE WHEN returns < 0 THEN 1 END) AS negative_samples,
-            MIN(returns) AS min_return
+            AVG(realized_pnl) AS avg_return,
+            STDDEV_POP(realized_pnl) AS volatility,
+            SUM(realized_pnl) AS cumulative_return,
+            SUM(CASE WHEN realized_pnl < 0 THEN realized_pnl * realized_pnl ELSE 0 END) AS downside_sum,
+            COUNT(realized_pnl) AS sample_size,
+            COUNT(CASE WHEN realized_pnl < 0 THEN 1 END) AS negative_samples,
+            MIN(realized_pnl) AS min_return,
+            AVG(ABS(position)) AS avg_exposure,
+            SUM(trade_cost) AS total_trade_cost
         FROM TABLE(
             TUMBLE(
-                TABLE (SELECT * FROM normalized_prices WHERE returns IS NOT NULL),
+                TABLE (
+                    SELECT
+                        product_id,
+                        event_time,
+                        sequence,
+                        position,
+                        realized_pnl,
+                        trade_cost
+                    FROM position_returns
+                ),
                 DESCRIPTOR(event_time),
                 {window_interval_sql}
             )
@@ -95,7 +127,9 @@ def register_performance_metrics(
             COALESCE(sc.trades_executed, 0) AS trades_executed,
             JSON_OBJECT(
                 KEY 'sample_size' VALUE CAST(pw.sample_size AS STRING),
-                KEY 'negative_samples' VALUE CAST(pw.negative_samples AS STRING)
+                KEY 'negative_samples' VALUE CAST(pw.negative_samples AS STRING),
+                KEY 'average_exposure' VALUE CAST(pw.avg_exposure AS STRING),
+                KEY 'total_trade_cost' VALUE CAST(pw.total_trade_cost AS STRING)
             ) AS metadata
         FROM performance_windows pw
         LEFT JOIN signal_counts sc

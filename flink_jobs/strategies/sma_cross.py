@@ -181,7 +181,85 @@ def build_pipeline(
         """
     )
 
+    table_env.execute_sql(
+        """
+        CREATE TEMPORARY VIEW positions_base AS
+        SELECT
+            np.product_id,
+            np.event_time,
+            np.sequence,
+            np.mid_price,
+            np.returns,
+            np.volatility,
+            cs.position AS signal_position
+        FROM normalized_prices np
+        LEFT JOIN crossover_signals cs
+            ON np.product_id = cs.instrument_id
+           AND np.event_time = cs.signal_time
+        """
+    )
+
+    table_env.execute_sql(
+        """
+        CREATE TEMPORARY VIEW positions_stream AS
+        SELECT
+            product_id,
+            event_time,
+            sequence,
+            mid_price,
+            returns,
+            volatility,
+            COALESCE(
+                LAST_VALUE(signal_position, TRUE) OVER (
+                    PARTITION BY product_id
+                    ORDER BY event_time
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                ),
+                0.0
+            ) AS position
+        FROM positions_base
+        """
+    )
+
+    table_env.execute_sql(
+        """
+        CREATE TEMPORARY VIEW positions_enriched AS
+        SELECT
+            product_id,
+            event_time,
+            sequence,
+            mid_price,
+            returns,
+            volatility,
+            position,
+            LAG(position) OVER (
+                PARTITION BY product_id
+                ORDER BY event_time
+            ) AS prev_position
+        FROM positions_stream
+        """
+    )
+
     register_performance_metrics(table_env, config, statement_set)
+
+    statement_set.add_insert_sql(
+        f"""
+        INSERT INTO strategy_positions_pg
+        SELECT
+            '{config.strategy_run_id}' AS strategy_run_id,
+            product_id,
+            event_time,
+            position,
+            (position - COALESCE(prev_position, 0.0)) AS position_change,
+            ABS(position - COALESCE(prev_position, 0.0)) * mid_price * {config.transaction_cost_rate} AS trade_cost,
+            mid_price,
+            JSON_OBJECT(
+                KEY 'prev_position' VALUE CAST(COALESCE(prev_position, 0.0) AS STRING)
+            ) AS metadata
+        FROM positions_enriched
+        WHERE prev_position IS NULL OR position <> prev_position
+        """
+    )
 
     statement_set.add_insert_sql(
         """

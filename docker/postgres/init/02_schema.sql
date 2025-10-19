@@ -134,3 +134,27 @@ SELECT create_hypertable(
 
 CREATE INDEX IF NOT EXISTS latency_metrics_component_idx
     ON latency_metrics (component, latency_time DESC);
+
+CREATE TABLE IF NOT EXISTS strategy_positions_stream (
+    strategy_run_id   UUID NOT NULL REFERENCES strategy_runs(strategy_run_id) ON DELETE CASCADE,
+    product_id        TEXT NOT NULL,
+    event_time        TIMESTAMPTZ NOT NULL,
+    position          NUMERIC(18, 8) NOT NULL,
+    position_change   NUMERIC(18, 8),
+    trade_cost        NUMERIC(18, 8),
+    mid_price         NUMERIC(18, 8),
+    metadata          JSONB DEFAULT '{}'::JSONB,
+    PRIMARY KEY (strategy_run_id, product_id, event_time)
+);
+
+SELECT create_hypertable(
+    'strategy_positions_stream',
+    'event_time',
+    partitioning_column => 'strategy_run_id',
+    number_partitions => 4,
+    chunk_time_interval => INTERVAL '12 hours',
+    if_not_exists => TRUE
+);
+
+CREATE INDEX IF NOT EXISTS strategy_positions_stream_product_idx
+    ON strategy_positions_stream (product_id, event_time DESC);

@@ -165,6 +165,31 @@ def register_common_tables(table_env: StreamTableEnvironment, config: JobConfig)
         """
     )
 
+    table_env.execute_sql(
+        f"""
+        CREATE TABLE IF NOT EXISTS strategy_positions_pg (
+            strategy_run_id STRING,
+            product_id STRING,
+            event_time TIMESTAMP_LTZ(3),
+            position DOUBLE,
+            position_change DOUBLE,
+            trade_cost DOUBLE,
+            mid_price DOUBLE,
+            metadata STRING
+        ) WITH (
+            'connector' = 'jdbc',
+            'url' = 'jdbc:postgresql://{config.postgres_host}:{config.postgres_port}/{config.postgres_db}',
+            'table-name' = 'strategy_positions_stream',
+            'username' = '{config.postgres_user}',
+            'password' = '{config.postgres_password}',
+            'driver' = 'org.postgresql.Driver',
+            'sink.buffer-flush.max-rows' = '200',
+            'sink.buffer-flush.interval' = '1s',
+            'sink.max-retries' = '5'
+        )
+        """
+    )
+
 
 def main() -> None:
     """Resolve and execute the selected strategy."""

@@ -29,5 +29,8 @@ jobs:
       - name: Check replay CLI (dry run)
         run: python scripts/replay_prices.py --dry-run
 
+      - name: Run unit tests
+        run: pytest -q
+
       - name: Lint placeholder (format check)
         run: black --check producer flink_jobs scripts

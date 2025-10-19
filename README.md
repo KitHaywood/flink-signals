@@ -342,11 +342,15 @@ This plan positions us to iterate efficiently: we now have an agreed structure, 
 - **Metric outputs** `flink_jobs/metrics/performance.py` adds rolling Sharpe/Sortino/returns/drawdown calculations, fan-out to Kafka (`metrics.performance`) and TimescaleDB (`strategy_metrics`).
 - **Replay & bootstrap** Dataclass schemas, Kafka replay service/CLI, and bootstrap script support topic provisioning, dry-run checks, and deterministic backtest streaming.
 - **Async ingestion** Coinbase producer (client, schema validation, aiokafka publisher) now streams sanitized tick data into Kafka with reconnect/backoff logic.
-- **TimescaleDB & Grafana** Database migrations declare hypertables, compression policies, and continuous aggregates; Grafana provisioning seeds a datasource and placeholder dashboard.
+- **TimescaleDB & Grafana** Database migrations declare hypertables (including `strategy_positions_stream`), compression policies, and continuous aggregates; Grafana provisioning seeds a datasource and placeholder dashboard.
+- **Strategy run control plane** Added `scripts/strategy_runs.py` for CLI-driven creation/listing of `strategy_runs`, enabling orchestration metadata to live in TimescaleDB.
+- **Position snapshots & transaction costs** SMA pipeline now forward-fills positions, persists trade transitions into `strategy_positions_stream`, and subtracts configurable transaction-cost bps from realized P&L.
+- **Replay tooling** `scripts/replay_prices.py` + `ReplayService` support dry runs, timestamp-bounded replays, and speed controls for targeted backtests.
+- **Testing scaffolding** Introduced lightweight pytest coverage for producer payload validation, config parsing, replay timestamp parsing, and strategy-run CLI parsing under `tests/`.
 
-- **Strategy P&L analytics** Integrate actual position tracking and realized P&L into the metrics pipeline (current Sharpe/Sortino use raw price returns only).
-- **Strategy management** Build `strategy_runs` control plane: DB CRUD utilities, CLI/API for parameter changes, and support for parallel strategy deployments.
-- **Replay automation** Add offset range selection, scenario definitions, and CI-backed integration tests that replay captive data through the SMA pipeline.
+- **Strategy P&L analytics** Incorporate slippage/latency models and persist execution fills to complement the position stream (transaction-cost-adjusted P&L now in place).
+- **Strategy management** Extend `strategy_runs` control plane with environment-aware parameter templating and automation for rolling deploys (create/update/list CLI now present).
+- **Replay automation** Layer scenario configs, fixture datasets, and CI integration tests around the timestamp-aware replay CLI to validate tuning workflows end-to-end.
 - **Producer hardening** Implement Coinbase auth paths, durable heartbeat/resubscribe logic, advanced batching/compression, and optional dual-write/backfill helpers for `prices.replay`.
 - **Observability** Replace placeholder dashboards with production-ready Grafana panels and wire Prometheus/JMX exporters for Flink/Kafka health monitoring.
 - **Testing & CI** Deliver unit/integration suites (mock Coinbase feed, Kafka mini-cluster, Flink mini cluster) and extend GitHub Actions to run them alongside linting.
