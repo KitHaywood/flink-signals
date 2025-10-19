@@ -353,10 +353,10 @@ This plan positions us to iterate efficiently: we now have an agreed structure, 
 - **Runbooks** Added `docs/runbooks/strategy-run-operations.md` describing launch, replay tuning, and rollback procedures.
 - **Integration hooks** Added `tests/integration/` harness with `pytest.mark.integration`; run by exporting `RUN_INTEGRATION_TESTS=1` before invoking `pytest -m integration`.
 
-- **Strategy P&L analytics** Incorporate slippage/latency models and persist execution fills to complement the position stream (transaction-cost-adjusted P&L now in place).
-- **Strategy management** Extend `strategy_runs` control plane with environment-aware parameter templating and automation for rolling deploys (create/update/list CLI now present).
-- **Replay automation** Layer scenario configs, fixture datasets, and CI integration tests around the timestamp-aware replay CLI to validate tuning workflows end-to-end.
-- **Producer hardening** Implement Coinbase auth paths, durable heartbeat/resubscribe logic, advanced batching/compression, and optional dual-write/backfill helpers for `prices.replay`.
-- **Observability** Replace placeholder dashboards with production-ready Grafana panels and wire Prometheus/JMX exporters for Flink/Kafka health monitoring.
-- **Testing & CI** Deliver unit/integration suites (mock Coinbase feed, Kafka mini-cluster, Flink mini cluster) and extend GitHub Actions to run them alongside linting.
-- **Security & operations** Incorporate secret management, credential rotation procedures, and deployment runbooks covering topic retention, scaling, and recovery playbooks.
+- **Strategy P&L analytics** Model execution slippage/latency more realistically (current fill latency is constant) and visualize exposures & cumulative trade costs.
+- **Producer hardening** Finalize Coinbase producer (auth, reconnection, batching, schema validation) and add ingest telemetry.
+- **Replay automation** Build end-to-end replay tests using Kafka/Flink services, seed fixture data, and assert Timescale metrics.
+- **Strategy management** Automate run parameter templating/rollouts (beyond CLI) and add health/alert hooks.
+- **Observability** Integrate Prometheus exporters and finish Grafana dashboards (cluster health, ingestion latency, P&L panels).
+- **Testing & CI** Expand unit coverage (metric math, async sinks) and enable integration workflows in GitHub Actions.
+- **Security & operations** Introduce secrets management, credential rotation docs, and runbooks for scaling/recovery.
