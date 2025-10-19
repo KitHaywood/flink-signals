@@ -76,6 +76,27 @@ def register_common_tables(table_env: StreamTableEnvironment, config: JobConfig)
 
     table_env.execute_sql(
         f"""
+        CREATE TABLE IF NOT EXISTS prices_normalized (
+            product_id STRING,
+            event_time TIMESTAMP_LTZ(3),
+            sequence BIGINT,
+            mid_price DOUBLE,
+            best_bid DOUBLE,
+            best_ask DOUBLE,
+            returns DOUBLE,
+            volatility DOUBLE
+        ) WITH (
+            'connector' = 'kafka',
+            'topic' = '{config.topic_prices_normalized}',
+            'properties.bootstrap.servers' = '{config.kafka_broker}',
+            'format' = 'json',
+            'json.timestamp-format.standard' = 'ISO-8601'
+        )
+        """
+    )
+
+    table_env.execute_sql(
+        f"""
         CREATE TABLE IF NOT EXISTS signals_decisions (
             strategy_run_id STRING,
             instrument_id STRING,
@@ -113,6 +134,33 @@ def register_common_tables(table_env: StreamTableEnvironment, config: JobConfig)
             'properties.bootstrap.servers' = '{config.kafka_broker}',
             'format' = 'json',
             'json.timestamp-format.standard' = 'ISO-8601'
+        )
+        """
+    )
+
+    table_env.execute_sql(
+        f"""
+        CREATE TABLE IF NOT EXISTS metrics_performance_pg (
+            strategy_run_id STRING,
+            metric_time TIMESTAMP_LTZ(3),
+            window_label STRING,
+            sharpe_ratio DOUBLE,
+            sortino_ratio DOUBLE,
+            cumulative_return DOUBLE,
+            drawdown DOUBLE,
+            volatility DOUBLE,
+            trades_executed BIGINT,
+            metadata STRING
+        ) WITH (
+            'connector' = 'jdbc',
+            'url' = 'jdbc:postgresql://{config.postgres_host}:{config.postgres_port}/{config.postgres_db}',
+            'table-name' = 'strategy_metrics',
+            'username' = '{config.postgres_user}',
+            'password' = '{config.postgres_password}',
+            'driver' = 'org.postgresql.Driver',
+            'sink.buffer-flush.max-rows' = '100',
+            'sink.buffer-flush.interval' = '1s',
+            'sink.max-retries' = '5'
         )
         """
     )

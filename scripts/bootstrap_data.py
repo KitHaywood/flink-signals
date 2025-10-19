@@ -61,6 +61,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--db-name", default=os.getenv("POSTGRES_DB", "signals"))
     parser.add_argument("--db-user", default=os.getenv("POSTGRES_USER", "flink"))
     parser.add_argument("--db-password", default=os.getenv("POSTGRES_PASSWORD", "flink_password"))
+    parser.add_argument("--dry-run", action="store_true", help="Validate configuration without performing actions.")
     return parser.parse_args()
 
 
@@ -80,6 +81,14 @@ def main() -> None:
     """Bootstrap Kafka topics and verify database schema."""
     args = parse_args()
     topics = build_topic_map(args.topics)
+
+    if args.dry_run:
+        logger.info("Dry run enabled; skipping Kafka topic creation and DB verification.")
+        logger.info("Kafka bootstrap servers: %s", args.kafka)
+        logger.info("Topics to ensure: %s", topics)
+        logger.info("Database host: %s", args.db_host)
+        return
+
     create_topics(args.kafka, topics)
 
     dsn = (

@@ -52,7 +52,7 @@ services:
     ports:
       - "8081:8081"
     volumes:
-      - ./flink-jobs:/opt/flink/usrlib
+      - ./flink_jobs:/opt/flink/usrlib
     depends_on:
       - kafka
       - postgres
@@ -70,7 +70,7 @@ services:
         jobmanager.rpc.address: flink-jobmanager
         taskmanager.numberOfTaskSlots: 2
     volumes:
-      - ./flink-jobs:/opt/flink/usrlib
+      - ./flink_jobs:/opt/flink/usrlib
     depends_on:
       - flink-jobmanager
 

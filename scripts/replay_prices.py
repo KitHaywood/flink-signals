@@ -19,6 +19,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--target-topic", default=os.getenv("KAFKA_TOPIC_PRICES_RAW", "prices.raw"))
     parser.add_argument("--speedup", type=float, default=float(os.getenv("REPLAY_SPEEDUP", "1.0")))
     parser.add_argument("--start-offset", type=int, default=None)
+    parser.add_argument("--dry-run", action="store_true", help="Validate configuration without connecting to Kafka.")
     return parser.parse_args()
 
 
@@ -37,6 +38,16 @@ async def run_async(args: argparse.Namespace) -> None:
 def main() -> None:
     """Entry point for replay CLI."""
     args = parse_args()
+    if args.dry_run:
+        config = ReplayConfig(
+            bootstrap_servers=args.bootstrap,
+            source_topic=args.source_topic,
+            target_topic=args.target_topic,
+            speedup_factor=args.speedup,
+            start_offset=args.start_offset,
+        )
+        logging.info("Replay dry run successful with config: %s", config)
+        return
     asyncio.run(run_async(args))
 
 

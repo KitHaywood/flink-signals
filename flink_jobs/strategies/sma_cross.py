@@ -12,6 +12,7 @@ from typing import Optional
 from pyflink.table import StatementSet, StreamTableEnvironment
 
 from ..config import JobConfig
+from ..metrics import register_performance_metrics
 
 
 def build_pipeline(
@@ -54,22 +55,92 @@ def build_pipeline(
 
     table_env.execute_sql(
         f"""
+        CREATE TEMPORARY VIEW normalized_base AS
+        SELECT
+            product_id,
+            event_time,
+            CAST(sequence AS BIGINT) AS sequence,
+            CAST(price AS DOUBLE) AS price,
+            CAST(best_bid AS DOUBLE) AS best_bid,
+            CAST(best_ask AS DOUBLE) AS best_ask,
+            CASE
+                WHEN best_bid IS NOT NULL AND best_ask IS NOT NULL THEN (CAST(best_bid AS DOUBLE) + CAST(best_ask AS DOUBLE)) / 2
+                ELSE CAST(price AS DOUBLE)
+            END AS mid_price
+        FROM {source_table}
+        """
+    )
+
+    table_env.execute_sql(
+        """
+        CREATE TEMPORARY VIEW normalized_prices AS
+        SELECT
+            enriched.product_id,
+            enriched.event_time,
+            enriched.sequence,
+            enriched.mid_price,
+            enriched.best_bid,
+            enriched.best_ask,
+            CASE
+                WHEN enriched.prev_mid_price IS NULL OR enriched.prev_mid_price = 0 THEN NULL
+                ELSE (enriched.mid_price - enriched.prev_mid_price) / enriched.prev_mid_price
+            END AS returns,
+            STDDEV_POP(enriched.mid_price) OVER (
+                PARTITION BY enriched.product_id
+                ORDER BY enriched.event_time
+                ROWS BETWEEN 59 PRECEDING AND CURRENT ROW
+            ) AS volatility
+        FROM (
+            SELECT
+                nb.product_id,
+                nb.event_time,
+                nb.sequence,
+                nb.mid_price,
+                nb.best_bid,
+                nb.best_ask,
+                LAG(nb.mid_price) OVER (
+                    PARTITION BY nb.product_id
+                    ORDER BY nb.event_time
+                ) AS prev_mid_price
+            FROM normalized_base nb
+        ) AS enriched
+        """
+    )
+
+    statement_set.add_insert_sql(
+        """
+        INSERT INTO prices_normalized
+        SELECT
+            product_id,
+            event_time,
+            sequence,
+            mid_price,
+            best_bid,
+            best_ask,
+            returns,
+            volatility
+        FROM normalized_prices
+        """
+    )
+
+    table_env.execute_sql(
+        f"""
         CREATE TEMPORARY VIEW sma_enriched AS
         SELECT
             product_id,
             event_time,
-            price,
-            AVG(price) OVER (
+            mid_price AS price,
+            AVG(mid_price) OVER (
                 PARTITION BY product_id
                 ORDER BY event_time
                 ROWS BETWEEN {config.sma_fast_window - 1} PRECEDING AND CURRENT ROW
             ) AS fast_sma,
-            AVG(price) OVER (
+            AVG(mid_price) OVER (
                 PARTITION BY product_id
                 ORDER BY event_time
                 ROWS BETWEEN {config.sma_slow_window - 1} PRECEDING AND CURRENT ROW
             ) AS slow_sma
-        FROM {source_table}
+        FROM normalized_prices
         """
     )
 
@@ -109,6 +180,8 @@ def build_pipeline(
         )
         """
     )
+
+    register_performance_metrics(table_env, config, statement_set)
 
     statement_set.add_insert_sql(
         """

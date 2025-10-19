@@ -5,11 +5,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
-from typing import Any, Dict
+from datetime import datetime
+from typing import Any, Dict, Optional
 
 from .coinbase_client import CoinbaseClient
 from .config import ProducerConfig
 from .kafka_producer import KafkaPriceProducer
+from .schemas import RawPricePayload
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -38,7 +40,10 @@ async def main() -> None:
 
     try:
         async for message in coinbase.stream_prices():
-            await send_to_kafka(kafka_producer, config.kafka_topic_raw, message)
+            payload = prepare_payload(message)
+            if payload is None:
+                continue
+            await send_to_kafka(kafka_producer, config.kafka_topic_raw, payload)
             if stop_event.is_set():
                 break
     finally:
@@ -51,6 +56,45 @@ async def send_to_kafka(
 ) -> None:
     """Forward Coinbase messages into Kafka."""
     await producer.send(topic=topic, payload=message)
+
+
+def prepare_payload(message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Validate and normalize raw Coinbase payload prior to publishing."""
+    try:
+        event_time = parse_iso8601(message["event_time"])
+        raw_price = RawPricePayload(
+            product_id=message["product_id"],
+            price=float(message["price"]),
+            best_bid=message.get("best_bid"),
+            best_ask=message.get("best_ask"),
+            volume_24h=message.get("volume_24h"),
+            sequence=message.get("sequence"),
+            side=message.get("side"),
+            event_time=event_time,
+            source=message.get("source", "coinbase"),
+        )
+    except (KeyError, ValueError, TypeError) as exc:
+        logger.warning("Dropping malformed message: %s; payload=%s", exc, message)
+        return None
+
+    return {
+        "product_id": raw_price.product_id,
+        "price": raw_price.price,
+        "best_bid": raw_price.best_bid,
+        "best_ask": raw_price.best_ask,
+        "volume_24h": raw_price.volume_24h,
+        "sequence": raw_price.sequence,
+        "side": raw_price.side,
+        "event_time": raw_price.event_time.isoformat(),
+        "source": raw_price.source,
+    }
+
+
+def parse_iso8601(value: str) -> datetime:
+    """Parse ISO-8601 timestamps while supporting trailing 'Z'."""
+    if value.endswith("Z"):
+        value = value[:-1] + "+00:00"
+    return datetime.fromisoformat(value)
 
 
 if __name__ == "__main__":  # pragma: no cover

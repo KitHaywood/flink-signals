@@ -105,12 +105,30 @@ class CoinbaseClient:
 
         return {
             "product_id": product_id,
-            "price": price,
-            "best_bid": message.get("best_bid"),
-            "best_ask": message.get("best_ask"),
-            "volume_24h": message.get("volume_24h"),
-            "sequence": message.get("sequence"),
+            "price": CoinbaseClient._to_float(price),
+            "best_bid": CoinbaseClient._to_float(message.get("best_bid")),
+            "best_ask": CoinbaseClient._to_float(message.get("best_ask")),
+            "volume_24h": CoinbaseClient._to_float(message.get("volume_24h")),
+            "sequence": CoinbaseClient._to_int(message.get("sequence")),
             "side": message.get("side"),
             "event_time": time,
             "source": "coinbase",
         }
+
+    @staticmethod
+    def _to_float(value: Optional[str]) -> Optional[float]:
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):  # pragma: no cover - validation guard
+            return None
+
+    @staticmethod
+    def _to_int(value: Optional[str]) -> Optional[int]:
+        if value is None:
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):  # pragma: no cover - validation guard
+            return None

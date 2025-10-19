@@ -5,7 +5,7 @@ This document lays out a complete plan for a PyFlink-based quantitative signal p
 ## 1. System Overview
 - **Objective** build a modular quant research and production stack for digital assets that performs streaming analytics and publishes performance telemetry in real time.
 - **Core services** Coinbase price producer → Kafka (broker) → Flink (PyFlink jobs) → PostgreSQL (state & reference data) → Grafana (dashboards via PostgreSQL / Prometheus adapters).
-- **Strategy layer** encapsulated inside PyFlink jobs (`flink-jobs/strategies`) operating on normalized Kafka streams; outputs trades, signals, and rolling performance metrics back to Kafka and PostgreSQL via asynchronous sinks to keep processing non-blocking. The baseline module is a simple moving-average crossover (`sma_cross`) that we will fine tune through automated rolling backtests.
+- **Strategy layer** encapsulated inside PyFlink jobs (`flink_jobs/strategies`) operating on normalized Kafka streams; outputs trades, signals, and rolling performance metrics back to Kafka and PostgreSQL via asynchronous sinks to keep processing non-blocking. The baseline module is a simple moving-average crossover (`sma_cross`) that we will fine tune through automated rolling backtests.
 - **Observability** Grafana dashboards consume metrics from PostgreSQL views and optional Prometheus exporters attached to Flink / Kafka for cluster health.
 
 ## 2. Target Architecture
@@ -29,7 +29,7 @@ flink-signals/
 │   └── grafana/                # Provisioning: datasources + dashboards JSON
 ├── docker-compose.yml          # Orchestrates entire stack
 ├── env/                        # Environment templates (.env, secrets)
-├── flink-jobs/
+├── flink_jobs/
 │   ├── strategies/             # Strategy implementations (PyFlink Table API / DataStream API, default sma_cross.py)
 │   ├── metrics/                # Metric computation utilities (Sharpe, Sortino, drawdowns)
 │   ├── schemas/                # Avro/JSON schemas, dataclasses
@@ -67,12 +67,12 @@ flink-signals/
   - Dashboards: Realtime metrics (Sharpe, Sortino, returns), strategy exposure, latency overview, Kafka/Flink health.
 
 ## 5. Strategy Layer Placement
-- Strategy logic resides under `flink-jobs/strategies/`. Each strategy implements an interface such as `StrategyNode` with methods:
+- Strategy logic resides under `flink_jobs/strategies/`. Each strategy implements an interface such as `StrategyNode` with methods:
   - `prepare_environment(table_env)` for registering UDFs and asynchronous connectors (e.g., `asyncpg` metadata fetchers, async sinks).
   - `build_pipeline(prices_table, *, historical_source=None)` returning the Table/DataStream transformations while optionally consuming replay streams for backtests.
 - Strategies are modular, discoverable units (via registry or Python entry points), enabling interchangeable trading logic without changing the orchestration code.
 - **Example strategy (`sma_cross`)** serves as the initial implementation: computes fast/slow simple moving averages on normalized mid-price, emits long/short/flat signals on crossovers, and writes signal metadata (window lengths, crossover direction, confidence). Parameters (fast/slow window, confirmation periods) are fine tuned using the rolling backtest harness that replays recent history from `prices.replay`.
-- Metrics functions live in `flink-jobs/metrics/`, enabling reuse across strategies.
+- Metrics functions live in `flink_jobs/metrics/`, enabling reuse across strategies.
 - Strategy selection handled via environment variable or job config (`STRATEGY_MODULE=sma_cross` by default), enabling dynamic deployment and experimentation.
 - Backtest harness uses the same strategies with `historical_source` bound to the Kafka `prices.replay` topic to replay historic sessions deterministically.
 
@@ -123,7 +123,7 @@ services:
     ports:
       - "8081:8081"
     volumes:
-      - ./flink-jobs:/opt/flink/usrlib
+      - ./flink_jobs:/opt/flink/usrlib
     depends_on:
       - kafka
       - postgres
@@ -137,7 +137,7 @@ services:
     environment:
       - JOB_MANAGER_RPC_ADDRESS=flink-jobmanager
     volumes:
-      - ./flink-jobs:/opt/flink/usrlib
+      - ./flink_jobs:/opt/flink/usrlib
     depends_on:
       - flink-jobmanager
 
@@ -190,7 +190,7 @@ STRATEGY_MODULE=sma_cross
 - **State management** leverage incremental checkpoints (RocksDB state backend) stored to local `./state` volume initially; extend to S3/GCS for production.
 - **Backtesting via replay** configure long-lived Kafka retention policies and companion tooling to replay historical message batches through strategies for regression testing and research.
 - **Metrics efficiency** compute Sharpe/Sortino using streaming windows (e.g., 5m, 1h) with keyed state to avoid recomputation; consider using Flink SQL `TABLE`/`VIEW` for direct PostgreSQL sink with upsert semantics.
-- **Schema governance** maintain Avro/JSON schemas in `flink-jobs/schemas` and enforce through schema registry (Confluent/Apicurio) if scaling.
+- **Schema governance** maintain Avro/JSON schemas in `flink_jobs/schemas` and enforce through schema registry (Confluent/Apicurio) if scaling.
 - **Async database access** standardize on `asyncpg` for auxiliary services/sidecars that interact with PostgreSQL to avoid blocking event loops and to maximize throughput in streaming contexts.
 - **Security** manage secrets via `.env` (development) and Docker secrets (production). Segregate Grafana credentials and API keys.
 
@@ -215,7 +215,7 @@ STRATEGY_MODULE=sma_cross
    - Add rolling window computations (returns, volatility).
    - Validate via dedicated unit tests and local Flink mini-cluster runs.
 7. **Strategy layer**
-   - Implement first strategy (`sma_cross.py`) in `flink-jobs/strategies/`, parameterized for fast/slow windows and crossover confirmation.
+   - Implement first strategy (`sma_cross.py`) in `flink_jobs/strategies/`, parameterized for fast/slow windows and crossover confirmation.
    - Provide interface for multiple strategies, dynamic loading, and optional historical replay connectors.
    - Build rolling backtest harness to automatically replay recent `prices.replay` slices and fine tune SMA parameters (grid search or Bayesian optimization).
 8. **Performance metrics**
@@ -334,21 +334,20 @@ STRATEGY_MODULE=sma_cross
 This plan positions us to iterate efficiently: we now have an agreed structure, architectural blueprint, sample orchestration configuration, and a staged pathway to a fully operational quant signaling platform. Subsequent work will translate each roadmap item into code, tests, and documentation updates.
 
 ## 12. Implementation Progress
-- **Container orchestration** `docker-compose.yml` now wires Bitnami Kafka/Zookeeper, TimescaleDB (with hypertable schema & continuous aggregates), Grafana provisioning, custom PyFlink image, and the Coinbase producer container.
-- **Environment & configuration** Added `.env.example`, centralized PyFlink job settings (`flink-jobs/config.py`), and exposed SMA parameters/strategy IDs via environment variables.
-- **Flink job scaffold** `flink-jobs/__main__.py` builds a streaming TableEnvironment, registers Kafka sources/sinks, and executes the SMA crossover pipeline with statement sets.
-- **Strategy implementation** `flink-jobs/strategies/sma_cross.py` computes fast/slow SMAs, detects crossover events (with configurable confirmation window), and emits signals to Kafka with metadata for Grafana.
-- **Schema & replay utilities** Introduced dataclass schemas for prices/signals, replay service (`flink-jobs/replay/service.py`) with CLI (`scripts/replay_prices.py`) to feed backtests from Kafka, and bootstrap tooling to precreate topics/verify TimescaleDB (`scripts/bootstrap_data.py`).
-- **Async ingestion** Coinbase producer stack (`producer/coinbase_client.py`, `producer/kafka_producer.py`, `producer/run.py`) now streams normalized tickers into Kafka using resilient websockets and JSON-serialized `aiokafka` producer.
-- **TimescaleDB schema** Migration scripts (`docker/postgres/init/*.sql`) create hypertables for market data, signals, metrics, latency, plus continuous aggregates & seed strategy records.
-- **Grafana provisioning** Datasource and placeholder dashboard JSON now align with TimescaleDB storage layout.
+- **Developer tooling** `requirements-dev.txt` and the GitHub Actions workflow (`.github/workflows/ci.yml`) now validate bootstrap/replay CLIs in dry-run mode and enforce formatting, providing an initial CI safety net.
+- **Container orchestration** `docker-compose.yml` wires Bitnami Kafka/Zookeeper, TimescaleDB (hypertables + aggregates), Grafana provisioning, a custom PyFlink image (with JDBC driver), and the Coinbase producer container.
+- **Config & code structure** `.env.example` mirrors runtime variables; `flink_jobs/config.py` centralises Kafka/Postgres/strategy parameters used across the job stack.
+- **Streaming job** `flink_jobs/__main__.py` prepares the TableEnvironment, registers Kafka sources/sinks (raw, normalized, signals, metrics, JDBC), and executes the SMA crossover pipeline via statement sets.
+- **Normalization & signals** `flink_jobs/strategies/sma_cross.py` normalizes Coinbase ticks, writes `prices.normalized`, computes fast/slow SMAs, detects crossovers, and emits enriched decision messages.
+- **Metric outputs** `flink_jobs/metrics/performance.py` adds rolling Sharpe/Sortino/returns/drawdown calculations, fan-out to Kafka (`metrics.performance`) and TimescaleDB (`strategy_metrics`).
+- **Replay & bootstrap** Dataclass schemas, Kafka replay service/CLI, and bootstrap script support topic provisioning, dry-run checks, and deterministic backtest streaming.
+- **Async ingestion** Coinbase producer (client, schema validation, aiokafka publisher) now streams sanitized tick data into Kafka with reconnect/backoff logic.
+- **TimescaleDB & Grafana** Database migrations declare hypertables, compression policies, and continuous aggregates; Grafana provisioning seeds a datasource and placeholder dashboard.
 
-## 13. Remaining Work
-- **Normalization & feature pipelines** Implement `prices.normalized` generation (PyFlink/producer) with schema validation and Kafka topic wiring; integrate feature tables feeding SMA pipeline.
-- **Metrics computation** Add dedicated PyFlink operators/UDFs for Sharpe, Sortino, returns, drawdowns; publish to `metrics_performance` and persist into TimescaleDB (async JDBC or `asyncpg` sidecar).
-- **Strategy management** Build strategy registry metadata in DB (`strategies`, `strategy_runs`), add CLI/API for creating runs, and support dynamic parameter updates / A/B deployments.
-- **Replay automation** Extend replay tooling with offset range selection, scenario configuration, and integration tests ensuring SMA tuning loop executes against recorded data.
-- **Producer hardening** Complete Coinbase auth (when needed), heartbeat/resubscribe logic, and add batching/compression tuning plus optional dual-write to `prices.replay`.
-- **Observability** Flesh out Grafana dashboards, integrate Prometheus exporters for Kafka/Flink, and add alerting rules covering strategy health and ingestion latency.
-- **Testing & CI** Implement unit/integration test suites per Section 11, wire GitHub Actions workflows, and add mocks/fixtures for Coinbase, Kafka, and Flink mini-cluster runs.
-- **Security & operations** Add secret management for credentials, rotate API keys, and document deployment steps for staging/production environments (including topic retention policies and scaling playbooks).
+- **Strategy P&L analytics** Integrate actual position tracking and realized P&L into the metrics pipeline (current Sharpe/Sortino use raw price returns only).
+- **Strategy management** Build `strategy_runs` control plane: DB CRUD utilities, CLI/API for parameter changes, and support for parallel strategy deployments.
+- **Replay automation** Add offset range selection, scenario definitions, and CI-backed integration tests that replay captive data through the SMA pipeline.
+- **Producer hardening** Implement Coinbase auth paths, durable heartbeat/resubscribe logic, advanced batching/compression, and optional dual-write/backfill helpers for `prices.replay`.
+- **Observability** Replace placeholder dashboards with production-ready Grafana panels and wire Prometheus/JMX exporters for Flink/Kafka health monitoring.
+- **Testing & CI** Deliver unit/integration suites (mock Coinbase feed, Kafka mini-cluster, Flink mini cluster) and extend GitHub Actions to run them alongside linting.
+- **Security & operations** Incorporate secret management, credential rotation procedures, and deployment runbooks covering topic retention, scaling, and recovery playbooks.

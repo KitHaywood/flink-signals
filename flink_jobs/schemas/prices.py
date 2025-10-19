@@ -26,7 +26,7 @@ class RawPrice:
 class NormalizedPrice:
     """Price payload after feature engineering/normalization."""
 
-    instrument_id: str
+    product_id: str
     event_time: datetime
     sequence: int
     mid_price: float
