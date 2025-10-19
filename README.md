@@ -320,6 +320,7 @@ STRATEGY_MODULE=sma_cross
       ```
     - Preload Docker images via `actions/cache` to reduce pull times.
     - Run integration suite with `pytest -m integration`.
+- *Status:* Current workflow (`.github/workflows/ci.yml`) executes unit tests and linting; integration-marked scenarios should be enabled once service containers are provisioned.
 - **Artifacts & diagnostics**
   - Upload Flink logs (`/opt/flink/log`) and Kafka/Postgres logs on failure for debugging.
   - Store generated Grafana dashboards JSON or provisioning logs to validate templates.
@@ -336,7 +337,7 @@ This plan positions us to iterate efficiently: we now have an agreed structure, 
 ## 12. Implementation Progress
 - **Developer tooling** `requirements-dev.txt` and the GitHub Actions workflow (`.github/workflows/ci.yml`) now validate bootstrap/replay CLIs in dry-run mode and enforce formatting, providing an initial CI safety net.
 - **Container orchestration** `docker-compose.yml` wires Bitnami Kafka/Zookeeper, TimescaleDB (hypertables + aggregates), Grafana provisioning, a custom PyFlink image (with JDBC driver), and the Coinbase producer container.
-- **Config & code structure** `.env.example` mirrors runtime variables; `flink_jobs/config.py` centralises Kafka/Postgres/strategy parameters used across the job stack.
+- **Config & code structure** `.env.example` mirrors runtime variables (including transaction/slippage bps); `flink_jobs/config.py` centralises Kafka/Postgres/strategy parameters used across the job stack.
 - **Streaming job** `flink_jobs/__main__.py` prepares the TableEnvironment, registers Kafka sources/sinks (raw, normalized, signals, metrics, JDBC), and executes the SMA crossover pipeline via statement sets.
 - **Normalization & signals** `flink_jobs/strategies/sma_cross.py` normalizes Coinbase ticks, writes `prices.normalized`, computes fast/slow SMAs, detects crossovers, and emits enriched decision messages.
 - **Metric outputs** `flink_jobs/metrics/performance.py` adds rolling Sharpe/Sortino/returns/drawdown calculations, fan-out to Kafka (`metrics.performance`) and TimescaleDB (`strategy_metrics`).
@@ -347,6 +348,7 @@ This plan positions us to iterate efficiently: we now have an agreed structure, 
 - **Position snapshots & transaction costs** SMA pipeline now forward-fills positions, persists trade transitions into `strategy_positions_stream`, and subtracts configurable transaction-cost bps from realized P&L.
 - **Replay tooling** `scripts/replay_prices.py` + `ReplayService` support dry runs, timestamp-bounded replays, and speed controls for targeted backtests.
 - **Testing scaffolding** Introduced lightweight pytest coverage for producer payload validation, config parsing, replay timestamp parsing, and strategy-run CLI parsing under `tests/`.
+- **Runbooks** Added `docs/runbooks/strategy-run-operations.md` describing launch, replay tuning, and rollback procedures.
 
 - **Strategy P&L analytics** Incorporate slippage/latency models and persist execution fills to complement the position stream (transaction-cost-adjusted P&L now in place).
 - **Strategy management** Extend `strategy_runs` control plane with environment-aware parameter templating and automation for rolling deploys (create/update/list CLI now present).

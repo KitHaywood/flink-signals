@@ -1,4 +1,4 @@
-import os
+import pytest
 
 from flink_jobs.config import JobConfig
 
@@ -11,6 +11,7 @@ def test_job_config_from_env(monkeypatch):
     monkeypatch.setenv("SMA_SLOW_WINDOW", "30")
     monkeypatch.setenv("STRATEGY_RUN_ID", "test-run")
     monkeypatch.setenv("TRANSACTION_COST_BPS", "12")
+    monkeypatch.setenv("SLIPPAGE_BPS", "3")
 
     cfg = JobConfig.from_env()
 
@@ -22,3 +23,8 @@ def test_job_config_from_env(monkeypatch):
     assert cfg.strategy_run_id == "test-run"
     assert cfg.transaction_cost_bps == 12
     assert cfg.transaction_cost_rate == 0.0012
+    assert cfg.slippage_bps == 3
+    assert cfg.slippage_rate == 0.0003
+    assert cfg.total_trade_cost_rate == pytest.approx(
+        cfg.transaction_cost_rate + cfg.slippage_rate
+    )

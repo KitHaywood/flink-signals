@@ -46,7 +46,12 @@ def list_runs(args: argparse.Namespace) -> None:
 
 
 def create_run(args: argparse.Namespace) -> None:
-    parameters: Dict[str, Any] = json.loads(args.parameters)
+    parameters: Dict[str, Any]
+    if args.param_file:
+        with open(args.param_file, "r", encoding="utf-8") as fp:
+            parameters = json.load(fp)
+    else:
+        parameters = json.loads(args.parameters)
     with get_connection() as conn, conn.cursor() as cur:
         cur.execute("SELECT strategy_id FROM strategies WHERE name = %s", (args.strategy_name,))
         result = cur.fetchone()
@@ -76,7 +81,11 @@ def create_run(args: argparse.Namespace) -> None:
 def update_run(args: argparse.Namespace) -> None:
     with get_connection() as conn, conn.cursor() as cur:
         if args.parameters is not None:
-            parameters: Dict[str, Any] = json.loads(args.parameters)
+            if args.param_file:
+                with open(args.param_file, "r", encoding="utf-8") as fp:
+                    parameters = json.load(fp)
+            else:
+                parameters = json.loads(args.parameters)
             cur.execute(
                 "UPDATE strategy_runs SET parameters = %s WHERE strategy_run_id = %s",
                 (json.dumps(parameters), args.run_id),
@@ -111,6 +120,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="{}",
         help="JSON string of strategy parameters",
     )
+    create_parser.add_argument("--param-file", help="Path to JSON parameter file")
     create_parser.add_argument("--created-by", default="cli")
     create_parser.set_defaults(func=create_run)
 
@@ -120,6 +130,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--parameters",
         help="JSON string of strategy parameters to replace",
     )
+    update_parser.add_argument("--param-file", help="Path to JSON parameter file")
     update_parser.add_argument(
         "--end",
         action="store_true",

@@ -5,8 +5,75 @@
   "timezone": "browser",
   "schemaVersion": 36,
   "version": 1,
-  "panels": [],
+  "panels": [
+    {
+      "datasource": "SignalsPostgres",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "lineWidth": 2
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 0},
+      "id": 1,
+      "options": {
+        "legend": {"displayMode": "list", "placement": "right"},
+        "tooltip": {"mode": "multi"}
+      },
+      "targets": [
+        {
+          "datasource": "SignalsPostgres",
+          "format": "time_series",
+          "rawSql": """
+SELECT bucket AS time, cumulative_return
+FROM strategy_metrics_hourly
+WHERE strategy_run_id = '$strategy_run'
+  AND window_label = '5m'
+ORDER BY bucket
+          """,
+          "refId": "A"
+        }
+      ],
+      "title": "Cumulative Return (5m)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "SignalsPostgres",
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 0},
+      "id": 2,
+      "options": {
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": "SignalsPostgres",
+          "format": "table",
+          "rawSql": """
+SELECT event_time, product_id, position, position_change, trade_cost, transaction_cost, slippage_cost
+FROM strategy_positions_stream
+WHERE strategy_run_id = '$strategy_run'
+ORDER BY event_time DESC
+LIMIT 200
+          """,
+          "refId": "A"
+        }
+      ],
+      "title": "Recent Positions",
+      "type": "table"
+    }
+  ],
   "templating": {
-    "list": []
+    "list": [
+      {
+        "name": "strategy_run",
+        "type": "query",
+        "datasource": "SignalsPostgres",
+        "refresh": 1,
+        "query": "SELECT DISTINCT strategy_run_id FROM strategy_metrics_hourly ORDER BY 1 DESC",
+        "current": {},
+        "label": "Strategy Run"
+      }
+    ]
   }
 }

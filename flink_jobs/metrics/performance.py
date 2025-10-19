@@ -31,7 +31,9 @@ def register_performance_metrics(
         Friendly label for the metrics window (e.g., "5m").
     """
 
-    cost_rate = config.transaction_cost_rate
+    transaction_rate = config.transaction_cost_rate
+    slippage_rate = config.slippage_rate
+    total_cost_rate = config.total_trade_cost_rate
 
     table_env.execute_sql(
         f"""
@@ -45,9 +47,11 @@ def register_performance_metrics(
             position,
             prev_position,
             ABS(position - COALESCE(prev_position, 0.0)) AS position_change,
-            ABS(position - COALESCE(prev_position, 0.0)) * mid_price * {cost_rate} AS trade_cost,
+            ABS(position - COALESCE(prev_position, 0.0)) * mid_price * {transaction_rate} AS transaction_cost,
+            ABS(position - COALESCE(prev_position, 0.0)) * mid_price * {slippage_rate} AS slippage_cost,
+            ABS(position - COALESCE(prev_position, 0.0)) * mid_price * {total_cost_rate} AS trade_cost,
             COALESCE(prev_position, 0.0) * COALESCE(returns, 0.0)
-                - ABS(position - COALESCE(prev_position, 0.0)) * mid_price * {cost_rate} AS realized_pnl
+                - ABS(position - COALESCE(prev_position, 0.0)) * mid_price * {total_cost_rate} AS realized_pnl
         FROM positions_enriched
         """
     )
@@ -66,7 +70,9 @@ def register_performance_metrics(
             COUNT(CASE WHEN realized_pnl < 0 THEN 1 END) AS negative_samples,
             MIN(realized_pnl) AS min_return,
             AVG(ABS(position)) AS avg_exposure,
-            SUM(trade_cost) AS total_trade_cost
+            SUM(trade_cost) AS total_trade_cost,
+            SUM(transaction_cost) AS total_transaction_cost,
+            SUM(slippage_cost) AS total_slippage_cost
         FROM TABLE(
             TUMBLE(
                 TABLE (
@@ -129,7 +135,9 @@ def register_performance_metrics(
                 KEY 'sample_size' VALUE CAST(pw.sample_size AS STRING),
                 KEY 'negative_samples' VALUE CAST(pw.negative_samples AS STRING),
                 KEY 'average_exposure' VALUE CAST(pw.avg_exposure AS STRING),
-                KEY 'total_trade_cost' VALUE CAST(pw.total_trade_cost AS STRING)
+                KEY 'total_trade_cost' VALUE CAST(pw.total_trade_cost AS STRING),
+                KEY 'total_transaction_cost' VALUE CAST(pw.total_transaction_cost AS STRING),
+                KEY 'total_slippage_cost' VALUE CAST(pw.total_slippage_cost AS STRING)
             ) AS metadata
         FROM performance_windows pw
         LEFT JOIN signal_counts sc

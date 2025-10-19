@@ -251,10 +251,14 @@ def build_pipeline(
             event_time,
             position,
             (position - COALESCE(prev_position, 0.0)) AS position_change,
-            ABS(position - COALESCE(prev_position, 0.0)) * mid_price * {config.transaction_cost_rate} AS trade_cost,
+            ABS(position - COALESCE(prev_position, 0.0)) * mid_price * {config.transaction_cost_rate} AS transaction_cost,
+            ABS(position - COALESCE(prev_position, 0.0)) * mid_price * {config.slippage_rate} AS slippage_cost,
+            ABS(position - COALESCE(prev_position, 0.0)) * mid_price * {config.total_trade_cost_rate} AS trade_cost,
             mid_price,
             JSON_OBJECT(
-                KEY 'prev_position' VALUE CAST(COALESCE(prev_position, 0.0) AS STRING)
+                KEY 'prev_position' VALUE CAST(COALESCE(prev_position, 0.0) AS STRING),
+                KEY 'transaction_cost_bps' VALUE CAST({config.transaction_cost_bps} AS STRING),
+                KEY 'slippage_bps' VALUE CAST({config.slippage_bps} AS STRING)
             ) AS metadata
         FROM positions_enriched
         WHERE prev_position IS NULL OR position <> prev_position

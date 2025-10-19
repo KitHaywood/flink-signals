@@ -141,6 +141,8 @@ CREATE TABLE IF NOT EXISTS strategy_positions_stream (
     event_time        TIMESTAMPTZ NOT NULL,
     position          NUMERIC(18, 8) NOT NULL,
     position_change   NUMERIC(18, 8),
+    transaction_cost  NUMERIC(18, 8),
+    slippage_cost     NUMERIC(18, 8),
     trade_cost        NUMERIC(18, 8),
     mid_price         NUMERIC(18, 8),
     metadata          JSONB DEFAULT '{}'::JSONB,

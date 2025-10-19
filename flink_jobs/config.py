@@ -24,6 +24,9 @@ class JobConfig:
     postgres_password: str
     transaction_cost_bps: int
     transaction_cost_rate: float
+    slippage_bps: int
+    slippage_rate: float
+    total_trade_cost_rate: float
 
     @classmethod
     def from_env(cls) -> "JobConfig":
@@ -46,4 +49,11 @@ class JobConfig:
             postgres_password=os.getenv("POSTGRES_PASSWORD", "flink_password"),
             transaction_cost_bps=int(os.getenv("TRANSACTION_COST_BPS", "0")),
             transaction_cost_rate=float(os.getenv("TRANSACTION_COST_BPS", "0")) / 10_000.0,
+            slippage_bps=int(os.getenv("SLIPPAGE_BPS", "0")),
+            slippage_rate=float(os.getenv("SLIPPAGE_BPS", "0")) / 10_000.0,
+            total_trade_cost_rate=(
+                float(os.getenv("TRANSACTION_COST_BPS", "0"))
+                + float(os.getenv("SLIPPAGE_BPS", "0"))
+            )
+            / 10_000.0,
         )
