@@ -31,10 +31,6 @@ def register_performance_metrics(
         Friendly label for the metrics window (e.g., "5m").
     """
 
-    transaction_rate = config.transaction_cost_rate
-    slippage_rate = config.slippage_rate
-    total_cost_rate = config.total_trade_cost_rate
-
     table_env.execute_sql(
         f"""
         CREATE TEMPORARY VIEW position_returns AS
@@ -46,13 +42,18 @@ def register_performance_metrics(
             COALESCE(returns, 0.0) AS asset_return,
             position,
             prev_position,
-            ABS(position - COALESCE(prev_position, 0.0)) AS position_change,
-            ABS(position - COALESCE(prev_position, 0.0)) * mid_price * {transaction_rate} AS transaction_cost,
-            ABS(position - COALESCE(prev_position, 0.0)) * mid_price * {slippage_rate} AS slippage_cost,
-            ABS(position - COALESCE(prev_position, 0.0)) * mid_price * {total_cost_rate} AS trade_cost,
+            position_change,
+            transaction_cost_rate,
+            slippage_rate,
+            trade_cost_rate,
+            ABS(position_change) * mid_price * transaction_cost_rate AS transaction_cost,
+            ABS(position_change) * mid_price * slippage_rate AS slippage_cost,
+            ABS(position_change) * mid_price * trade_cost_rate AS trade_cost,
             COALESCE(prev_position, 0.0) * COALESCE(returns, 0.0)
-                - ABS(position - COALESCE(prev_position, 0.0)) * mid_price * {total_cost_rate} AS realized_pnl
-        FROM positions_enriched
+                - ABS(position_change) * mid_price * trade_cost_rate AS realized_pnl,
+            ABS(position) * mid_price AS notional_exposure,
+            ABS(position) AS unit_exposure
+        FROM positions_costs
         """
     )
 
@@ -69,7 +70,8 @@ def register_performance_metrics(
             COUNT(realized_pnl) AS sample_size,
             COUNT(CASE WHEN realized_pnl < 0 THEN 1 END) AS negative_samples,
             MIN(realized_pnl) AS min_return,
-            AVG(ABS(position)) AS avg_exposure,
+            AVG(notional_exposure) AS avg_notional_exposure,
+            AVG(unit_exposure) AS avg_unit_exposure,
             SUM(trade_cost) AS total_trade_cost,
             SUM(transaction_cost) AS total_transaction_cost,
             SUM(slippage_cost) AS total_slippage_cost
@@ -81,6 +83,8 @@ def register_performance_metrics(
                         event_time,
                         sequence,
                         position,
+                        notional_exposure,
+                        unit_exposure,
                         realized_pnl,
                         trade_cost
                     FROM position_returns
@@ -131,10 +135,14 @@ def register_performance_metrics(
             pw.min_return AS drawdown,
             pw.volatility AS volatility,
             COALESCE(sc.trades_executed, 0) AS trades_executed,
+            pw.avg_notional_exposure AS avg_exposure_notional,
+            pw.total_trade_cost AS total_trade_cost,
+            pw.total_transaction_cost AS total_transaction_cost,
+            pw.total_slippage_cost AS total_slippage_cost,
             JSON_OBJECT(
                 KEY 'sample_size' VALUE CAST(pw.sample_size AS STRING),
                 KEY 'negative_samples' VALUE CAST(pw.negative_samples AS STRING),
-                KEY 'average_exposure' VALUE CAST(pw.avg_exposure AS STRING),
+                KEY 'average_unit_exposure' VALUE CAST(pw.avg_unit_exposure AS STRING),
                 KEY 'total_trade_cost' VALUE CAST(pw.total_trade_cost AS STRING),
                 KEY 'total_transaction_cost' VALUE CAST(pw.total_transaction_cost AS STRING),
                 KEY 'total_slippage_cost' VALUE CAST(pw.total_slippage_cost AS STRING)
@@ -158,6 +166,10 @@ def register_performance_metrics(
             drawdown,
             volatility,
             trades_executed,
+            avg_exposure_notional,
+            total_trade_cost,
+            total_transaction_cost,
+            total_slippage_cost,
             metadata
         FROM metrics_enriched
         """
@@ -176,6 +188,10 @@ def register_performance_metrics(
             drawdown,
             volatility,
             trades_executed,
+            avg_exposure_notional,
+            total_trade_cost,
+            total_transaction_cost,
+            total_slippage_cost,
             metadata
         FROM metrics_enriched
         """

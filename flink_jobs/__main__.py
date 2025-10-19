@@ -127,6 +127,10 @@ def register_common_tables(table_env: StreamTableEnvironment, config: JobConfig)
             drawdown DOUBLE,
             volatility DOUBLE,
             trades_executed BIGINT,
+            avg_exposure_notional DOUBLE,
+            total_trade_cost DOUBLE,
+            total_transaction_cost DOUBLE,
+            total_slippage_cost DOUBLE,
             metadata STRING
         ) WITH (
             'connector' = 'kafka',
@@ -150,6 +154,10 @@ def register_common_tables(table_env: StreamTableEnvironment, config: JobConfig)
             drawdown DOUBLE,
             volatility DOUBLE,
             trades_executed BIGINT,
+            avg_exposure_notional DOUBLE,
+            total_trade_cost DOUBLE,
+            total_transaction_cost DOUBLE,
+            total_slippage_cost DOUBLE,
             metadata STRING
         ) WITH (
             'connector' = 'jdbc',

@@ -333,6 +333,7 @@ STRATEGY_MODULE=sma_cross
 ### Local Testing Parity
 - Provide `make test`, `make test-unit`, and `make test-integration` targets mirroring CI commands.
 - Document usage of `docker compose -f docker-compose.yml -f docker-compose.test.yml` for developers to reproduce integration environment without GitHub Actions.
+- Run Python test suites from the managed virtualenv: `. .venv/bin/activate && pytest` (and append markers/flags as needed).
 
 This plan positions us to iterate efficiently: we now have an agreed structure, architectural blueprint, sample orchestration configuration, and a staged pathway to a fully operational quant signaling platform. Subsequent work will translate each roadmap item into code, tests, and documentation updates.
 

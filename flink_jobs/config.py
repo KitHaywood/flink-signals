@@ -26,8 +26,14 @@ class JobConfig:
     transaction_cost_rate: float
     slippage_bps: int
     slippage_rate: float
+    slippage_max_bps: int
+    slippage_max_rate: float
+    slippage_volatility_multiplier: float
+    slippage_spread_multiplier: float
     total_trade_cost_rate: float
     fill_latency_ms: int
+    fill_latency_jitter_ms: int
+    fill_latency_volatility_ms: int
 
     @classmethod
     def from_env(cls) -> "JobConfig":
@@ -52,10 +58,18 @@ class JobConfig:
             transaction_cost_rate=float(os.getenv("TRANSACTION_COST_BPS", "0")) / 10_000.0,
             slippage_bps=int(os.getenv("SLIPPAGE_BPS", "0")),
             slippage_rate=float(os.getenv("SLIPPAGE_BPS", "0")) / 10_000.0,
+            slippage_max_bps=int(os.getenv("SLIPPAGE_MAX_BPS", "50")),
+            slippage_max_rate=float(os.getenv("SLIPPAGE_MAX_BPS", "50")) / 10_000.0,
+            slippage_volatility_multiplier=float(
+                os.getenv("SLIPPAGE_VOLATILITY_MULTIPLIER", "0.35")
+            ),
+            slippage_spread_multiplier=float(os.getenv("SLIPPAGE_SPREAD_MULTIPLIER", "0.5")),
             total_trade_cost_rate=(
                 float(os.getenv("TRANSACTION_COST_BPS", "0"))
                 + float(os.getenv("SLIPPAGE_BPS", "0"))
             )
             / 10_000.0,
             fill_latency_ms=int(os.getenv("FILL_LATENCY_MS", "250")),
+            fill_latency_jitter_ms=int(os.getenv("FILL_LATENCY_JITTER_MS", "500")),
+            fill_latency_volatility_ms=int(os.getenv("FILL_LATENCY_VOLATILITY_MS", "1200")),
         )

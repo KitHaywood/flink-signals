@@ -191,6 +191,12 @@ def build_pipeline(
             np.mid_price,
             np.returns,
             np.volatility,
+            np.best_bid,
+            np.best_ask,
+            CASE
+                WHEN np.best_bid IS NOT NULL AND np.best_ask IS NOT NULL THEN np.best_ask - np.best_bid
+                ELSE NULL
+            END AS spread,
             cs.position AS signal_position
         FROM normalized_prices np
         LEFT JOIN crossover_signals cs
@@ -209,6 +215,9 @@ def build_pipeline(
             mid_price,
             returns,
             volatility,
+            best_bid,
+            best_ask,
+            spread,
             COALESCE(
                 LAST_VALUE(signal_position, TRUE) OVER (
                     PARTITION BY product_id
@@ -231,18 +240,80 @@ def build_pipeline(
             mid_price,
             returns,
             volatility,
+            best_bid,
+            best_ask,
+            spread,
             position,
             LAG(position) OVER (
                 PARTITION BY product_id
                 ORDER BY event_time
-            ) AS prev_position
+            ) AS prev_position,
+            CASE
+                WHEN mid_price IS NULL OR mid_price = 0 THEN 0.0
+                ELSE COALESCE(volatility, 0.0) / mid_price
+            END AS volatility_ratio,
+            CASE
+                WHEN mid_price IS NULL OR mid_price = 0 OR spread IS NULL THEN 0.0
+                ELSE spread / mid_price
+            END AS spread_ratio
         FROM positions_stream
+        """
+    )
+
+    slippage_components = (
+        f"{config.slippage_rate}"
+        + f" + volatility_ratio * {config.slippage_volatility_multiplier}"
+        + f" + spread_ratio * {config.slippage_spread_multiplier}"
+    )
+    dynamic_slippage_expr = (
+        f"CASE "
+        f"WHEN {slippage_components} < 0 THEN 0.0 "
+        f"WHEN {slippage_components} > {config.slippage_max_rate} THEN {config.slippage_max_rate} "
+        f"ELSE {slippage_components} END"
+    )
+    latency_increment_expr = (
+        f"CAST({config.fill_latency_volatility_ms} * volatility_ratio AS BIGINT)"
+    )
+    dynamic_latency_expr = (
+        f"CASE "
+        f"WHEN {config.fill_latency_ms} + {latency_increment_expr} < {config.fill_latency_ms} "
+        f"THEN {config.fill_latency_ms} "
+        f"WHEN {config.fill_latency_ms} + {latency_increment_expr} > "
+        f"{config.fill_latency_ms + config.fill_latency_jitter_ms} "
+        f"THEN {config.fill_latency_ms + config.fill_latency_jitter_ms} "
+        f"ELSE {config.fill_latency_ms} + {latency_increment_expr} "
+        f"END"
+    )
+
+    table_env.execute_sql(
+        f"""
+        CREATE TEMPORARY VIEW positions_costs AS
+        SELECT
+            product_id,
+            event_time,
+            sequence,
+            mid_price,
+            returns,
+            volatility,
+            best_bid,
+            best_ask,
+            spread,
+            position,
+            prev_position,
+            position - COALESCE(prev_position, 0.0) AS position_change,
+            volatility_ratio,
+            spread_ratio,
+            {dynamic_slippage_expr} AS slippage_rate,
+            {config.transaction_cost_rate} AS transaction_cost_rate,
+            ({dynamic_slippage_expr}) + {config.transaction_cost_rate} AS trade_cost_rate,
+            {dynamic_latency_expr} AS fill_latency_ms
+        FROM positions_enriched
         """
     )
 
     register_performance_metrics(table_env, config, statement_set)
 
-    fill_latency_interval = f"INTERVAL '{config.fill_latency_ms}' MILLISECOND"
+    timestamp_add_expression = "TIMESTAMPADD(MILLISECOND, CAST(fill_latency_ms AS BIGINT), event_time)"
 
     statement_set.add_insert_sql(
         f"""
@@ -251,26 +322,29 @@ def build_pipeline(
             '{config.strategy_run_id}' AS strategy_run_id,
             product_id,
             event_time AS signal_time,
-            event_time + {fill_latency_interval} AS execution_time,
+            {timestamp_add_expression} AS execution_time,
             position_change,
             CASE
-                WHEN position_change > 0 THEN mid_price * (1 + {config.slippage_rate})
-                WHEN position_change < 0 THEN mid_price * (1 - {config.slippage_rate})
+                WHEN position_change > 0 THEN mid_price * (1 + slippage_rate)
+                WHEN position_change < 0 THEN mid_price * (1 - slippage_rate)
                 ELSE mid_price
             END AS execution_price,
             mid_price AS base_price,
             ABS(position_change) * mid_price * {config.transaction_cost_rate} AS transaction_cost,
-            ABS(position_change) * mid_price * {config.slippage_rate} AS slippage_cost,
+            ABS(position_change) * mid_price * slippage_rate AS slippage_cost,
             JSON_OBJECT(
-                KEY 'fill_latency_ms' VALUE CAST({config.fill_latency_ms} AS STRING)
+                KEY 'fill_latency_ms' VALUE CAST(fill_latency_ms AS STRING),
+                KEY 'slippage_rate' VALUE CAST(slippage_rate AS STRING)
             ) AS metadata
         FROM (
             SELECT
                 product_id,
                 event_time,
-                (position - COALESCE(prev_position, 0.0)) AS position_change,
-                mid_price
-            FROM positions_enriched
+                position_change,
+                mid_price,
+                slippage_rate,
+                fill_latency_ms
+            FROM positions_costs
         )
         WHERE position_change <> 0
         """
@@ -284,17 +358,18 @@ def build_pipeline(
             product_id,
             event_time,
             position,
-            (position - COALESCE(prev_position, 0.0)) AS position_change,
-            ABS(position - COALESCE(prev_position, 0.0)) * mid_price * {config.transaction_cost_rate} AS transaction_cost,
-            ABS(position - COALESCE(prev_position, 0.0)) * mid_price * {config.slippage_rate} AS slippage_cost,
-            ABS(position - COALESCE(prev_position, 0.0)) * mid_price * {config.total_trade_cost_rate} AS trade_cost,
+            position_change,
+            ABS(position_change) * mid_price * {config.transaction_cost_rate} AS transaction_cost,
+            ABS(position_change) * mid_price * slippage_rate AS slippage_cost,
+            ABS(position_change) * mid_price * trade_cost_rate AS trade_cost,
             mid_price,
             JSON_OBJECT(
                 KEY 'prev_position' VALUE CAST(COALESCE(prev_position, 0.0) AS STRING),
                 KEY 'transaction_cost_bps' VALUE CAST({config.transaction_cost_bps} AS STRING),
-                KEY 'slippage_bps' VALUE CAST({config.slippage_bps} AS STRING)
+                KEY 'slippage_bps' VALUE CAST({config.slippage_bps} AS STRING),
+                KEY 'effective_slippage_rate' VALUE CAST(slippage_rate AS STRING)
             ) AS metadata
-        FROM positions_enriched
+        FROM positions_costs
         WHERE prev_position IS NULL OR position <> prev_position
         """
     )
