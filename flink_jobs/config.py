@@ -27,6 +27,7 @@ class JobConfig:
     slippage_bps: int
     slippage_rate: float
     total_trade_cost_rate: float
+    fill_latency_ms: int
 
     @classmethod
     def from_env(cls) -> "JobConfig":
@@ -56,4 +57,5 @@ class JobConfig:
                 + float(os.getenv("SLIPPAGE_BPS", "0"))
             )
             / 10_000.0,
+            fill_latency_ms=int(os.getenv("FILL_LATENCY_MS", "250")),
         )

@@ -61,6 +61,37 @@ LIMIT 200
       ],
       "title": "Recent Positions",
       "type": "table"
+    },
+    {
+      "datasource": "SignalsPostgres",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "lineWidth": 2
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 9},
+      "id": 3,
+      "options": {
+        "legend": {"displayMode": "list", "placement": "right"},
+        "tooltip": {"mode": "multi"}
+      },
+      "targets": [
+        {
+          "datasource": "SignalsPostgres",
+          "format": "time_series",
+          "rawSql": """
+SELECT execution_time AS time, trade_cost
+FROM strategy_executions_stream
+WHERE strategy_run_id = '$strategy_run'
+ORDER BY execution_time
+          """,
+          "refId": "A"
+        }
+      ],
+      "title": "Trade Cost (USD)",
+      "type": "timeseries"
     }
   ],
   "templating": {

@@ -6,8 +6,10 @@ def test_strategy_runs_parser_commands():
     list_args = parser.parse_args(["list"])
     assert hasattr(list_args, "active_only")
 
-    create_args = parser.parse_args(["create", "sma_cross"])
+    create_args = parser.parse_args(["create", "sma_cross", "--param-file", "params.json"])
     assert create_args.strategy_name == "sma_cross"
+    assert create_args.param_file == "params.json"
 
-    update_args = parser.parse_args(["update", "run-id", "--end"])
+    update_args = parser.parse_args(["update", "run-id", "--end", "--param-file", "params.json"])
     assert update_args.end is True
+    assert update_args.param_file == "params.json"

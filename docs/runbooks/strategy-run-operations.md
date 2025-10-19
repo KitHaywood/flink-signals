@@ -33,7 +33,7 @@ This runbook outlines the standard operating procedures for launching, tuning, a
    ```
 
 ## Monitoring
-- Grafana dashboard **Quant Signals Overview** (http://localhost:3000) displays cumulative returns and recent position transitions filtered by `strategy_run` variable.
+- Grafana dashboard **Quant Signals Overview** (http://localhost:3000) displays cumulative returns, recent position transitions, and trade cost time series filtered by `strategy_run` variable.
 - Validate raw metrics via SQL:
   ```sql
   SELECT * FROM strategy_metrics ORDER BY metric_time DESC LIMIT 20;

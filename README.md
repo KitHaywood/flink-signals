@@ -283,6 +283,8 @@ STRATEGY_MODULE=sma_cross
   - Validate rolling backtest job can seek Kafka offsets and produce tuning summaries for `sma_cross`.
 - **Cleanup**
   - Use `pytest` integration markers and fixtures to tear down topics/tables; guard against leftover topics by deleting them post-test.
+- **Activation**
+  - Export `RUN_INTEGRATION_TESTS=1` before running `pytest -m integration` to opt into service-backed scenarios; otherwise, integration tests are skipped.
 
 ### Continuous Integration Implementation
 - **Workflow layout (`.github/workflows/ci.yml`)**
@@ -349,6 +351,7 @@ This plan positions us to iterate efficiently: we now have an agreed structure, 
 - **Replay tooling** `scripts/replay_prices.py` + `ReplayService` support dry runs, timestamp-bounded replays, and speed controls for targeted backtests.
 - **Testing scaffolding** Introduced lightweight pytest coverage for producer payload validation, config parsing, replay timestamp parsing, and strategy-run CLI parsing under `tests/`.
 - **Runbooks** Added `docs/runbooks/strategy-run-operations.md` describing launch, replay tuning, and rollback procedures.
+- **Integration hooks** Added `tests/integration/` harness with `pytest.mark.integration`; run by exporting `RUN_INTEGRATION_TESTS=1` before invoking `pytest -m integration`.
 
 - **Strategy P&L analytics** Incorporate slippage/latency models and persist execution fills to complement the position stream (transaction-cost-adjusted P&L now in place).
 - **Strategy management** Extend `strategy_runs` control plane with environment-aware parameter templating and automation for rolling deploys (create/update/list CLI now present).

@@ -242,6 +242,40 @@ def build_pipeline(
 
     register_performance_metrics(table_env, config, statement_set)
 
+    fill_latency_interval = f"INTERVAL '{config.fill_latency_ms}' MILLISECOND"
+
+    statement_set.add_insert_sql(
+        f"""
+        INSERT INTO strategy_executions_pg
+        SELECT
+            '{config.strategy_run_id}' AS strategy_run_id,
+            product_id,
+            event_time AS signal_time,
+            event_time + {fill_latency_interval} AS execution_time,
+            position_change,
+            CASE
+                WHEN position_change > 0 THEN mid_price * (1 + {config.slippage_rate})
+                WHEN position_change < 0 THEN mid_price * (1 - {config.slippage_rate})
+                ELSE mid_price
+            END AS execution_price,
+            mid_price AS base_price,
+            ABS(position_change) * mid_price * {config.transaction_cost_rate} AS transaction_cost,
+            ABS(position_change) * mid_price * {config.slippage_rate} AS slippage_cost,
+            JSON_OBJECT(
+                KEY 'fill_latency_ms' VALUE CAST({config.fill_latency_ms} AS STRING)
+            ) AS metadata
+        FROM (
+            SELECT
+                product_id,
+                event_time,
+                (position - COALESCE(prev_position, 0.0)) AS position_change,
+                mid_price
+            FROM positions_enriched
+        )
+        WHERE position_change <> 0
+        """
+    )
+
     statement_set.add_insert_sql(
         f"""
         INSERT INTO strategy_positions_pg

@@ -173,6 +173,8 @@ def register_common_tables(table_env: StreamTableEnvironment, config: JobConfig)
             event_time TIMESTAMP_LTZ(3),
             position DOUBLE,
             position_change DOUBLE,
+            transaction_cost DOUBLE,
+            slippage_cost DOUBLE,
             trade_cost DOUBLE,
             mid_price DOUBLE,
             metadata STRING
@@ -180,6 +182,33 @@ def register_common_tables(table_env: StreamTableEnvironment, config: JobConfig)
             'connector' = 'jdbc',
             'url' = 'jdbc:postgresql://{config.postgres_host}:{config.postgres_port}/{config.postgres_db}',
             'table-name' = 'strategy_positions_stream',
+            'username' = '{config.postgres_user}',
+            'password' = '{config.postgres_password}',
+            'driver' = 'org.postgresql.Driver',
+            'sink.buffer-flush.max-rows' = '200',
+            'sink.buffer-flush.interval' = '1s',
+            'sink.max-retries' = '5'
+        )
+        """
+    )
+
+    table_env.execute_sql(
+        f"""
+        CREATE TABLE IF NOT EXISTS strategy_executions_pg (
+            strategy_run_id STRING,
+            product_id STRING,
+            signal_time TIMESTAMP_LTZ(3),
+            execution_time TIMESTAMP_LTZ(3),
+            position_change DOUBLE,
+            execution_price DOUBLE,
+            base_price DOUBLE,
+            transaction_cost DOUBLE,
+            slippage_cost DOUBLE,
+            metadata STRING
+        ) WITH (
+            'connector' = 'jdbc',
+            'url' = 'jdbc:postgresql://{config.postgres_host}:{config.postgres_port}/{config.postgres_db}',
+            'table-name' = 'strategy_executions_stream',
             'username' = '{config.postgres_user}',
             'password' = '{config.postgres_password}',
             'driver' = 'org.postgresql.Driver',

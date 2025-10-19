@@ -160,3 +160,29 @@ SELECT create_hypertable(
 
 CREATE INDEX IF NOT EXISTS strategy_positions_stream_product_idx
     ON strategy_positions_stream (product_id, event_time DESC);
+
+CREATE TABLE IF NOT EXISTS strategy_executions_stream (
+    strategy_run_id   UUID NOT NULL REFERENCES strategy_runs(strategy_run_id) ON DELETE CASCADE,
+    product_id        TEXT NOT NULL,
+    signal_time       TIMESTAMPTZ NOT NULL,
+    execution_time    TIMESTAMPTZ NOT NULL,
+    position_change   NUMERIC(18, 8) NOT NULL,
+    execution_price   NUMERIC(18, 8) NOT NULL,
+    base_price        NUMERIC(18, 8) NOT NULL,
+    transaction_cost  NUMERIC(18, 8),
+    slippage_cost     NUMERIC(18, 8),
+    metadata          JSONB DEFAULT '{}'::JSONB,
+    PRIMARY KEY (strategy_run_id, product_id, execution_time)
+);
+
+SELECT create_hypertable(
+    'strategy_executions_stream',
+    'execution_time',
+    partitioning_column => 'strategy_run_id',
+    number_partitions => 4,
+    chunk_time_interval => INTERVAL '12 hours',
+    if_not_exists => TRUE
+);
+
+CREATE INDEX IF NOT EXISTS strategy_executions_stream_product_idx
+    ON strategy_executions_stream (product_id, execution_time DESC);
