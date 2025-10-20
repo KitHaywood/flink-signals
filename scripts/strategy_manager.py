@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib.error import URLError
-from urllib.request import Request, urlopen
+from urllib.request import urlopen
 
 from scripts.strategy_runs import get_connection
 

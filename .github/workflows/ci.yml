@@ -29,6 +29,13 @@ jobs:
       - name: Check replay CLI (dry run)
         run: python scripts/replay_prices.py --dry-run
 
+      - name: Healthcheck scripts (dry run)
+        run: |
+          python scripts/healthcheck_producer.py --dry-run
+          python scripts/healthcheck_kafka_lag.py --dry-run
+          python scripts/healthcheck_flink.py --dry-run --allow-empty
+          python scripts/replay_prices.py --healthcheck
+
       - name: Run unit tests
         run: pytest -q
 
