@@ -5,10 +5,15 @@ This runbook outlines the standard operating procedures for launching, tuning, a
 ## Prerequisites
 - Docker Compose stack running (`docker-compose up -d`).
 - TimescaleDB migrations applied via container init scripts.
+- Kafka topics created once per environment:
+  ```bash
+  . .venv/bin/activate
+  python scripts/bootstrap_data.py --kafka localhost:29092 --db-host localhost --db-port 5434
+  ```
 - Access to the `strategy_runs` CLI (`python scripts/strategy_runs.py`).
 
 ## Launching a New Strategy Run
-1. Create a JSON parameter template (e.g. `configs/sma_cross_live.json`) containing:
+1. Create a JSON parameter template (e.g. `configs/sma_cross_paper.json`) containing:
    ```json
    {
      "sma_fast_window": 20,
@@ -20,7 +25,7 @@ This runbook outlines the standard operating procedures for launching, tuning, a
    ```
 2. Register the run:
    ```bash
-   python scripts/strategy_runs.py create sma_cross --param-file configs/sma_cross_live.json --run-type PAPER --created-by "alice"
+   python scripts/strategy_runs.py create sma_cross --param-file configs/sma_cross_paper.json --run-type PAPER --created-by "alice"
    ```
    The command prints the generated `strategy_run_id`. Export it before submitting the PyFlink job:
    ```bash
@@ -33,7 +38,7 @@ This runbook outlines the standard operating procedures for launching, tuning, a
    ```
 
 ## Monitoring
-- Grafana dashboard **Quant Signals Overview** (http://localhost:3000) displays cumulative returns, recent position transitions, and trade cost time series filtered by `strategy_run` variable.
+- Grafana dashboard **Quant Signals Overview** (http://localhost:3100) displays cumulative returns, recent position transitions, and trade cost time series filtered by `strategy_run` variable.
 - Validate raw metrics via SQL:
   ```sql
   SELECT * FROM strategy_metrics ORDER BY metric_time DESC LIMIT 20;
@@ -44,7 +49,7 @@ This runbook outlines the standard operating procedures for launching, tuning, a
 1. Edit the JSON parameter file with new values.
 2. Push parameters to TimescaleDB:
    ```bash
-   python scripts/strategy_runs.py update <run-id> --param-file configs/sma_cross_live.json
+   python scripts/strategy_runs.py update <run-id> --param-file configs/sma_cross_paper.json
    ```
 3. Restart or rescale Flink jobs as necessary to pick up configuration changes.
 

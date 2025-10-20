@@ -7,7 +7,7 @@
   "version": 1,
   "panels": [
     {
-      "datasource": "SignalsPostgres",
+      "datasource": "SignalsPostgres (Flink)",
       "fieldConfig": {
         "defaults": {
           "unit": "percentunit",
@@ -23,9 +23,9 @@
       },
       "targets": [
         {
-          "datasource": "SignalsPostgres",
+          "datasource": "SignalsPostgres (Flink)",
           "format": "time_series",
-          "rawSql": "SELECT bucket AS time, cumulative_return FROM strategy_metrics_hourly WHERE strategy_run_id = '$strategy_run' AND window_label = '5m' ORDER BY bucket",
+          "rawSql": "SELECT bucket AS time, cumulative_return_last AS cumulative_return FROM strategy_metrics_hourly WHERE ('$strategy_run' = '' OR strategy_run_id::text = '$strategy_run') AND window_label = '5m' ORDER BY bucket",
           "refId": "A"
         }
       ],
@@ -33,7 +33,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": "SignalsPostgres",
+      "datasource": "SignalsPostgres (Flink)",
       "gridPos": {"h": 9, "w": 12, "x": 12, "y": 0},
       "id": 2,
       "options": {
@@ -41,9 +41,9 @@
       },
       "targets": [
         {
-          "datasource": "SignalsPostgres",
+          "datasource": "SignalsPostgres (Flink)",
           "format": "table",
-          "rawSql": "SELECT event_time, product_id, position, position_change, trade_cost, transaction_cost, slippage_cost FROM strategy_positions_stream WHERE strategy_run_id = '$strategy_run' ORDER BY event_time DESC LIMIT 200",
+          "rawSql": "SELECT event_time, product_id, position, position_change, trade_cost, transaction_cost, slippage_cost FROM strategy_positions_stream WHERE ('$strategy_run' = '' OR strategy_run_id::text = '$strategy_run') ORDER BY event_time DESC LIMIT 200",
           "refId": "A"
         }
       ],
@@ -51,7 +51,7 @@
       "type": "table"
     },
     {
-      "datasource": "SignalsPostgres",
+      "datasource": "SignalsPostgres (Flink)",
       "fieldConfig": {
         "defaults": {
           "unit": "currencyUSD",
@@ -67,9 +67,9 @@
       },
       "targets": [
         {
-          "datasource": "SignalsPostgres",
+          "datasource": "SignalsPostgres (Flink)",
           "format": "time_series",
-          "rawSql": "SELECT execution_time AS time, trade_cost FROM strategy_executions_stream WHERE strategy_run_id = '$strategy_run' ORDER BY execution_time",
+          "rawSql": "SELECT execution_time AS time, trade_cost FROM strategy_executions_stream WHERE ('$strategy_run' = '' OR strategy_run_id::text = '$strategy_run') ORDER BY execution_time",
           "refId": "A"
         }
       ],
@@ -77,7 +77,7 @@
       "type": "table"
     },
     {
-      "datasource": "SignalsPostgres",
+      "datasource": "SignalsPostgres (Flink)",
       "fieldConfig": {
         "defaults": {
           "unit": "currencyUSD",
@@ -93,9 +93,9 @@
       },
       "targets": [
         {
-          "datasource": "SignalsPostgres",
+          "datasource": "SignalsPostgres (Flink)",
           "format": "time_series",
-          "rawSql": "SELECT execution_time AS time, trade_cost FROM strategy_executions_stream WHERE strategy_run_id = '$strategy_run' ORDER BY execution_time",
+          "rawSql": "SELECT execution_time AS time, trade_cost FROM strategy_executions_stream WHERE ('$strategy_run' = '' OR strategy_run_id::text = '$strategy_run') ORDER BY execution_time",
           "refId": "A"
         }
       ],
@@ -108,9 +108,9 @@
       {
         "name": "strategy_run",
         "type": "query",
-        "datasource": "SignalsPostgres",
+        "datasource": "SignalsPostgres (Flink)",
         "refresh": 1,
-        "query": "SELECT DISTINCT strategy_run_id FROM strategy_metrics_hourly ORDER BY 1 DESC",
+        "query": "SELECT DISTINCT strategy_run_id::text FROM strategy_metrics_hourly ORDER BY 1 DESC",
         "current": {},
         "label": "Strategy Run"
       }

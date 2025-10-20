@@ -1,0 +1,7 @@
+{
+  "sma_fast_window": 20,
+  "sma_slow_window": 60,
+  "sma_confirmation_window": 3,
+  "transaction_cost_bps": 5,
+  "slippage_bps": 12
+}

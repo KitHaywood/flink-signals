@@ -1,5 +1,5 @@
 apache-flink==1.18.1
 asyncpg==0.29.0
 pandas==2.2.2
-numpy==1.26.4
+numpy==1.24.4
 pyyaml==6.0.1

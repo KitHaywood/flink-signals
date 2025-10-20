@@ -79,13 +79,12 @@ flink-signals/
 
 ## 6. Sample `docker-compose.yml`
 ```yaml
-version: "3.9"
-
 services:
   kafka:
-    image: bitnami/kafka:3.7
+    image: confluentinc/cp-kafka:7.6.1
     ports:
       - "9092:9092"
+      - "29092:29092"
     environment:
       KAFKA_CFG_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_CFG_LISTENERS: PLAINTEXT://:9092
@@ -95,14 +94,14 @@ services:
       - zookeeper
 
   zookeeper:
-    image: bitnami/zookeeper:3.9
+    image: confluentinc/cp-zookeeper:7.6.1
     ports:
       - "2181:2181"
 
   postgres:
     image: timescale/timescaledb-ha:pg16
     ports:
-      - "5432:5432"
+      - "5434:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -157,7 +156,7 @@ services:
   grafana:
     image: grafana/grafana:10.4.2
     ports:
-      - "3000:3000"
+      - "3100:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
     volumes:
@@ -321,14 +320,14 @@ FILL_LATENCY_VOLATILITY_MS=1200
       ```yaml
       services:
         kafka:
-          image: bitnami/kafka:3.7
+          image: confluentinc/cp-kafka:7.6.1
           env:
             KAFKA_CFG_ZOOKEEPER_CONNECT: zookeeper:2181
             KAFKA_CFG_LISTENERS: PLAINTEXT://:9092
             KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
           ports: ["9092:9092"]
         zookeeper:
-          image: bitnami/zookeeper:3.9
+          image: confluentinc/cp-zookeeper:7.6.1
           ports: ["2181:2181"]
         postgres:
           image: timescale/timescaledb-ha:pg16
@@ -336,7 +335,7 @@ FILL_LATENCY_VOLATILITY_MS=1200
             POSTGRES_USER: test
             POSTGRES_PASSWORD: test
             POSTGRES_DB: signals
-          ports: ["5432:5432"]
+          ports: ["5434:5432"]
         flink-jobmanager:
           image: custom/flink:latest
           ports: ["8081:8081"]
@@ -394,25 +393,32 @@ This plan positions us to iterate efficiently: we now have an agreed structure, 
    echo "COINBASE_PRODUCT_IDS=BTC-USD,ETH-USD" >> .env
    echo "EXECUTION_MODE=paper" >> .env
    ```
-2. Launch the local stack with the public Coinbase feed:
+2. Sync container images (required after changing tags):
+   ```bash
+   docker compose pull
+   ```
+3. Launch the local stack with the public Coinbase feed:
    ```bash
    docker compose up -d
    docker compose logs -f producer
+   docker compose logs -f grafana-flink
    ```
    The producer uses `wss://ws-feed.exchange.coinbase.com` and requires no API credentials.
-3. Bootstrap core resources and fixtures from the project virtualenv:
+4. Bootstrap core resources and fixtures from the project virtualenv (use the host-loopback ports so Kafka/Postgres are reachable outside the compose network):
    ```bash
    . .venv/bin/activate
-   python scripts/bootstrap_data.py --apply
+   python scripts/bootstrap_data.py --kafka localhost:29092 --db-host localhost --db-port 5434
    ```
-4. Submit the PyFlink job in paper mode once Kafka/Postgres are healthy:
+5. Submit the PyFlink job in paper mode once Kafka/Postgres are healthy (a ready-made parameter file lives at `configs/sma_cross_paper.json`):
    ```bash
-   python scripts/strategy_runs.py create sma_cross --run-type PAPER --created-by "local"
+   python scripts/strategy_runs.py create sma_cross --param-file configs/sma_cross_paper.json --run-type PAPER --created-by "local"
    export STRATEGY_RUN_ID=<printed_id_from_previous_step>
    ./scripts/submit_flink_job.sh sma_cross
    ```
-5. Inspect simulated fills and P&L metrics via:
+6. Inspect simulated fills and P&L metrics via:
    ```bash
-   psql "$POSTGRES_URI" -c "SELECT * FROM strategy_executions_stream ORDER BY execution_time DESC LIMIT 20;"
+   # From the host, connect on localhost:5434 (forwarded into the container's 5432)
+   psql "postgresql://${POSTGRES_USER:-flink}:${POSTGRES_PASSWORD:-flink_password}@localhost:5434/${POSTGRES_DB:-signals}" \
+     -c "SELECT * FROM strategy_executions_stream ORDER BY execution_time DESC LIMIT 20;"
    ```
-   Grafana (`http://localhost:3000`) exposes the **Quant Signals Overview** dashboard backed purely by paper-trading data.
+   Access Grafana (`http://localhost:3100`) to view the **Quant Signals Overview** dashboard backed purely by paper-trading data.

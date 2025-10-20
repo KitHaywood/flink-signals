@@ -14,7 +14,7 @@ import psycopg2
 def get_connection():
     return psycopg2.connect(
         host=os.getenv("POSTGRES_HOST", "postgres"),
-        port=os.getenv("POSTGRES_PORT", "5432"),
+        port=os.getenv("POSTGRES_PORT", "5434"),
         dbname=os.getenv("POSTGRES_DB", "signals"),
         user=os.getenv("POSTGRES_USER", "flink"),
         password=os.getenv("POSTGRES_PASSWORD", "flink_password"),
@@ -112,7 +112,7 @@ def build_parser() -> argparse.ArgumentParser:
     create_parser.add_argument("strategy_name", help="Name of the strategy (e.g., sma_cross)")
     create_parser.add_argument(
         "--run-type",
-        choices=["LIVE", "REPLAY", "BACKTEST"],
+        choices=["LIVE", "REPLAY", "BACKTEST", "PAPER"],
         default="LIVE",
     )
     create_parser.add_argument(

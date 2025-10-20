@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS strategies (
 CREATE TABLE IF NOT EXISTS strategy_runs (
     strategy_run_id   UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     strategy_id       UUID NOT NULL REFERENCES strategies(strategy_id) ON DELETE CASCADE,
-    run_type          TEXT NOT NULL CHECK (run_type IN ('LIVE', 'REPLAY', 'BACKTEST')),
+    run_type          TEXT NOT NULL CHECK (run_type IN ('LIVE', 'REPLAY', 'BACKTEST', 'PAPER')),
     parameters        JSONB NOT NULL,
     started_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     ended_at          TIMESTAMPTZ,

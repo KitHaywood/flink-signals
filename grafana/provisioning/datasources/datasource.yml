@@ -1,6 +1,6 @@
 apiVersion: 1
 datasources:
-  - name: SignalsPostgres
+  - name: SignalsPostgres (Flink)
     type: postgres
     access: proxy
     url: postgres:5432
@@ -8,7 +8,7 @@ datasources:
     secureJsonData:
       password: ${POSTGRES_PASSWORD}
     database: ${POSTGRES_DB}
-    isDefault: true
+    isDefault: false
     jsonData:
       sslmode: disable
       postgresVersion: 1600

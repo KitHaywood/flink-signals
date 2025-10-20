@@ -1,27 +1,32 @@
-version: "3.9"
-
 services:
   zookeeper:
-    image: bitnami/zookeeper:3.9
+    image: confluentinc/cp-zookeeper:7.6.1
     container_name: zookeeper
     environment:
-      ZOO_ENABLE_AUTH: "no"
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
     ports:
       - "2181:2181"
 
   kafka:
-    image: bitnami/kafka:3.7
+    image: confluentinc/cp-kafka:7.6.1
     container_name: kafka
     depends_on:
       - zookeeper
     ports:
       - "9092:9092"
+      - "29092:29092"
     environment:
-      KAFKA_CFG_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092
-      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "false"
-      KAFKA_ENABLE_KRAFT: "no"
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
 
   postgres:
     image: timescale/timescaledb-ha:pg16
@@ -32,7 +37,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       TIMESCALEDB_TELEMETRY: "off"
     ports:
-      - "5432:5432"
+      - "5434:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/postgres/init:/docker-entrypoint-initdb.d
@@ -91,14 +96,17 @@ services:
     depends_on:
       - kafka
 
-  grafana:
+  grafana-flink:
     image: grafana/grafana:10.4.2
-    container_name: grafana
+    container_name: grafana-flink
     ports:
-      - "3000:3000"
+      - "3100:3000"
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_USER}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - grafana_storage:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning
