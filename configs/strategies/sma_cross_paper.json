@@ -1,0 +1,14 @@
+{
+  "name": "sma_cross",
+  "module": "flink_jobs.strategies.sma_cross",
+  "description": "Baseline SMA crossover configuration for paper trading runs.",
+  "run_type": "PAPER",
+  "execution_mode": "paper",
+  "parameters": {
+    "SMA_FAST_WINDOW": 20,
+    "SMA_SLOW_WINDOW": 60,
+    "SMA_CONFIRMATION_WINDOW": 3,
+    "TRANSACTION_COST_BPS": 5,
+    "SLIPPAGE_BPS": 12
+  }
+}

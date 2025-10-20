@@ -9,7 +9,6 @@ iterations.
 
 from __future__ import annotations
 
-import importlib
 import os
 from typing import Callable
 
@@ -18,17 +17,17 @@ from pyflink.datastream import StreamExecutionEnvironment
 from pyflink.table import EnvironmentSettings, StreamTableEnvironment, StatementSet
 
 from .config import JobConfig
+from .strategies import get_strategy_module
 
 DEFAULT_STRATEGY = "sma_cross"
 
 
 def resolve_strategy(name: str) -> Callable[..., None]:
     """Dynamically import the requested strategy module."""
-    module_path = f"flink_jobs.strategies.{name}"
-    module = importlib.import_module(module_path)
+    module = get_strategy_module(name)
     if not hasattr(module, "build_pipeline"):
         raise AttributeError(
-            f"Strategy module '{module_path}' must expose a 'build_pipeline' callable."
+            f"Strategy module '{module.__name__}' must expose a 'build_pipeline' callable."
         )
     return module.build_pipeline
 

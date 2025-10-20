@@ -1,0 +1,17 @@
+{
+  "name": "mock_mean_reversion",
+  "module": "flink_jobs.strategies.sma_cross",
+  "description": "Mock mean-reversion profile that reuses the SMA crossover module for automation tests.",
+  "run_type": "BACKTEST",
+  "execution_mode": "backtest",
+  "parameters": {
+    "SMA_FAST_WINDOW": 10,
+    "SMA_SLOW_WINDOW": 40,
+    "SMA_CONFIRMATION_WINDOW": 1,
+    "TRANSACTION_COST_BPS": 7,
+    "SLIPPAGE_BPS": 4
+  },
+  "env_overrides": {
+    "KAFKA_TOPIC_PRICES_RAW": "prices.mock.raw"
+  }
+}

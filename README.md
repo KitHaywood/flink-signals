@@ -370,6 +370,7 @@ This plan positions us to iterate efficiently: we now have an agreed structure, 
 - **Async ingestion** Coinbase producer (client, schema validation, aiokafka publisher) now streams sanitized tick data into Kafka with reconnect/backoff logic.
 - **TimescaleDB & Grafana** Database migrations declare hypertables (including `strategy_positions_stream`), compression policies, and continuous aggregates; Grafana provisioning seeds a datasource and placeholder dashboard.
 - **Strategy run control plane** Added `scripts/strategy_runs.py` for CLI-driven creation/listing of `strategy_runs`, enabling orchestration metadata to live in TimescaleDB.
+- **Strategy lifecycle tooling** Introduced `scripts/strategy_manager.py` with register/deploy/retire flows, a shared config catalog under `configs/strategies/`, and mock profiles (`mock_mean_reversion`, `mock_breakout`) to exercise multi-strategy plumbing without manual SQL.
 - **Position snapshots & transaction costs** SMA pipeline now forward-fills positions, persists trade transitions into `strategy_positions_stream`, and subtracts configurable transaction-cost bps from realized P&L.
 - **Paper trading environment** Execution-mode metadata is fixed to `paper`, simulated fills capture latency/slippage assumptions, and TimescaleDB stores ledger-style position/execution history for evaluation with no live order routing.
 - **Replay tooling** `scripts/replay_prices.py` + `ReplayService` support dry runs, timestamp-bounded replays, and speed controls for targeted backtests.
@@ -377,16 +378,25 @@ This plan positions us to iterate efficiently: we now have an agreed structure, 
 - **Runbooks** Added `docs/runbooks/strategy-run-operations.md` describing launch, replay tuning, and rollback procedures.
 - **Integration hooks** Added `tests/integration/` harness with `pytest.mark.integration`; run by exporting `RUN_INTEGRATION_TESTS=1` before invoking `pytest -m integration`.
 
+## 13. Healthcheck Plan
+- **Producer** expose a lightweight host CLI (or `/health` endpoint) that validates Coinbase WebSocket connectivity, recent publish timestamps, and backlog size; surface warning thresholds via exit codes for automation.
+- **Kafka** poll `kafka-consumer-groups.sh --describe` for `prices.normalized` and `signals.decisions` to watch consumer lag and partition availability; treat lag growth beyond the configured SLA as a critical alarm.
+- **Flink** query the JobManager REST `/jobs/overview` to confirm jobs stay in `RUNNING`, track checkpoint age, and flag backpressure metrics; integrate with `strategy_manager retire --cancel-job` for automated remediation.
+- **PostgreSQL / TimescaleDB** run periodic SQL probes against `strategy_metrics` and `strategy_positions_stream` to confirm fresh inserts and monitor connection saturation via `pg_stat_database`.
+- **Grafana** ping `/api/health` and validate datasource reachability; alert when dashboards report stale metrics compared to database probes.
+- **Replay and CLI tooling** add a `--healthcheck` dry run to `scripts/replay_prices.py` that verifies Kafka topics and offsets without emitting records, enabling quick smoke coverage before scheduled replays.
+
+### Next Steps
 - **Strategy P&L analytics** Model execution slippage/latency more realistically (current fill latency is constant) and visualize exposures & cumulative trade costs.
 - **Producer hardening** Finalize Coinbase producer (connection resilience, reconnection, batching, schema validation) and add ingest telemetry.
 - **Replay automation** Build end-to-end replay tests using Kafka/Flink services, seed fixture data, and assert Timescale metrics.
-- **Strategy management** Automate run parameter templating/rollouts (beyond CLI) and add health/alert hooks.
+- **Strategy management** Harden `strategy_manager` with automated config validation, job-id discovery tests, and alert wiring for lifecycle failures.
 - **Observability** Integrate Prometheus exporters and finish Grafana dashboards (cluster health, ingestion latency, P&L panels).
 - **Testing & CI** Expand unit coverage (metric math, async sinks) and enable integration workflows in GitHub Actions.
 - **Security & operations** Introduce secrets management, credential rotation docs, and runbooks for scaling/recovery.
 - **Live trading readiness** Document requirements for moving beyond paper trading (order routing, Coinbase Advanced Trade APIs, risk controls) while keeping current stack insulated from real balances.
 
-## 13. Paper Trading Environment
+## 14. Paper Trading Environment
 1. Copy the environment template and tune paper-trading knobs:
    ```bash
    cp env/.env.example .env
@@ -409,11 +419,10 @@ This plan positions us to iterate efficiently: we now have an agreed structure, 
    . .venv/bin/activate
    python scripts/bootstrap_data.py --kafka localhost:29092 --db-host localhost --db-port 5434
    ```
-5. Submit the PyFlink job in paper mode once Kafka/Postgres are healthy (a ready-made parameter file lives at `configs/sma_cross_paper.json`):
+5. Register and deploy the SMA crossover pipeline with the lifecycle helper (ready-made profile: `configs/strategies/sma_cross_paper.json`):
    ```bash
-   python scripts/strategy_runs.py create sma_cross --param-file configs/sma_cross_paper.json --run-type PAPER --created-by "local"
-   export STRATEGY_RUN_ID=<printed_id_from_previous_step>
-   ./scripts/submit_flink_job.sh sma_cross
+   . .venv/bin/activate
+   python scripts/strategy_manager.py deploy --config configs/strategies/sma_cross_paper.json --execute --end-existing --created-by local
    ```
 6. Inspect simulated fills and P&L metrics via:
    ```bash
